@@ -2,7 +2,7 @@
 
 # FreeCAD MCP
 
-This repository is a FreeCAD MCP that allows you to control FreeCAD from Claude Desktop.
+This repository is a FreeCAD MCP that allows you to control FreeCAD from Claude Code or Claude Desktop.
 
 ## Demo
 
@@ -75,6 +75,63 @@ By default, the RPC server must be started manually each time FreeCAD opens. To 
 The setting is saved to `freecad_mcp_settings.json` and persists across sessions. On the next FreeCAD launch, the RPC server will start automatically once the application finishes loading.
 
 You can disable it at any time by unchecking **Auto-Start Server** in the same menu.
+
+## Setting up Claude Code
+
+Pre-installation of [uv/uvx](https://docs.astral.sh/uv/guides/tools/) is required.
+
+Register the server once, from anywhere:
+
+```bash
+claude mcp add freecad -s user -- uvx freecad-mcp
+```
+
+`-s user` makes it available in every project. Use `-s project` instead to write
+the config to a `.mcp.json` that you commit and share with a team, or omit `-s`
+for the current project only.
+
+To save tokens by skipping the screenshots that most tools return, append the
+flag after the command:
+
+```bash
+claude mcp add freecad -s user -- uvx freecad-mcp --only-text-feedback
+```
+
+For developers working from a clone, this repository already ships a project
+`.mcp.json` that runs the local checkout — just start Claude Code from the
+repository root and approve the server when prompted:
+
+```bash
+git clone https://github.com/neka-nat/freecad-mcp.git
+cd freecad-mcp
+claude
+```
+
+Verify the connection with `/mcp` inside Claude Code, or from the shell:
+
+```bash
+claude mcp list
+```
+
+Start FreeCAD with the addon's RPC server running before you use the tools (see
+[Install addon](#install-addon)), then just describe what you want to build:
+
+```
+> model a 80x40x10 mm mounting bracket with four M4 clearance holes
+```
+
+Claude Code picks up the bundled `freecad-cad-design` skill from
+[`.claude/skills/`](.claude/skills/freecad-cad-design/SKILL.md) when you work in
+this repository, which teaches it the parametric modeling workflow, the
+`create_object` property format, and the `execute_code` rules. To use it in your
+own projects, copy that directory into `~/.claude/skills/`:
+
+```bash
+cp -r .claude/skills/freecad-cad-design ~/.claude/skills/
+```
+
+The server's `asset_creation_strategy` prompt is also available as the slash
+command `/mcp__freecad__asset_creation_strategy`.
 
 ## Setting up Claude Desktop
 
@@ -172,6 +229,12 @@ Pass the `--host` flag with the IP address or hostname of the machine running Fr
 }
 ```
 
+In Claude Code, pass the same flag after the command:
+
+```bash
+claude mcp add freecad -s user -- uvx freecad-mcp --host 192.168.1.100
+```
+
 The `--host` value is validated on startup — it must be a valid IPv4/IPv6 address or hostname.
 
 ## Tools
@@ -180,12 +243,15 @@ The `--host` value is validated on startup — it must be a valid IPv4/IPv6 addr
 * `create_object`: Create a new object in FreeCAD.
 * `edit_object`: Edit an object in FreeCAD.
 * `delete_object`: Delete an object in FreeCAD.
-* `execute_code`: Execute arbitrary Python code in FreeCAD.
+* `execute_code`: Execute arbitrary Python code in FreeCAD on the GUI thread.
+* `execute_code_async`: Execute background-safe Python code without waiting for completion, for long-running computations that do not touch the GUI or the document tree.
 * `insert_part_from_library`: Insert a part from the [parts library](https://github.com/FreeCAD/FreeCAD-library).
 * `get_view`: Get a screenshot of the active view.
 * `get_objects`: Get all objects in a document.
 * `get_object`: Get an object in a document.
 * `get_parts_list`: Get the list of parts in the [parts library](https://github.com/FreeCAD/FreeCAD-library).
+* `list_documents`: Get the list of open documents in FreeCAD.
+* `reload_document`: Close and re-open a document to pick up changes made to its `.FCStd` file outside the GUI.
 * `run_fem_analysis`: Run the CalculiX solver on an existing `Fem::FemAnalysis` and return summary results (max von Mises stress, max displacement, node count, working directory). Auto-creates a `SolverCcxTools` if the analysis has none. See [`examples/cantilever_fem.py`](examples/cantilever_fem.py) for an end-to-end usage example.
 
 ## Contributors
