@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "freecad": {
+      "command": "uv",
+      "args": ["run", "freecad-mcp"]
+    }
+  }
+}
