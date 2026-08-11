@@ -30,7 +30,9 @@ https://claude.ai/share/7b48fd60-68ba-46fb-bb21-2fbb17399b48
 ## Install addon
 
 FreeCAD Addon directory is
-* Windows: `%APPDATA%\FreeCAD\Mod\`
+* Windows:
+  * FreeCAD 1.1: `%APPDATA%\FreeCAD\v1-1\Mod\` (e.g. `C:\Users\<username>\AppData\Roaming\FreeCAD\v1-1\Mod\`)
+  * FreeCAD 1.0: `%APPDATA%\FreeCAD\Mod\`
 * Mac:
   * FreeCAD 1.1: `~/Library/Application\ Support/FreeCAD/v1-1/Mod/`
   * FreeCAD 1.0: `~/Library/Application\ Support/FreeCAD/v1-0/Mod/`
@@ -54,6 +56,15 @@ cp -r addon/FreeCADMCP ~/.local/share/FreeCAD/v1-1/Mod/
 
 # For macOS (FreeCAD 1.1)
 cp -r addon/FreeCADMCP ~/Library/Application\ Support/FreeCAD/v1-1/Mod/
+```
+
+On Windows (FreeCAD 1.1), in PowerShell:
+
+```powershell
+git clone https://github.com/neka-nat/freecad-mcp.git
+cd freecad-mcp
+New-Item -ItemType Directory -Force "$env:APPDATA\FreeCAD\v1-1\Mod" | Out-Null
+Copy-Item -Recurse -Force addon\FreeCADMCP "$env:APPDATA\FreeCAD\v1-1\Mod\"
 ```
 
 When you install addon, you need to restart FreeCAD.
