@@ -300,6 +300,67 @@ class TestRealYtdlpAcceptsOurOptions(unittest.TestCase):
         self.assertNotIn("ratelimit", self._build(rateLimitKbps=0))
 
 
+class TestJsRuntimeSelection(unittest.TestCase):
+    """Current yt-dlp needs a JS runtime for YouTube and only looks for Deno."""
+
+    def setUp(self) -> None:
+        ytmd.detect_js_runtimes.cache_clear()
+        self.addCleanup(ytmd.detect_js_runtimes.cache_clear)
+
+    def _with(self, available: dict[str, str]) -> None:
+        patched = lambda: available  # noqa: E731
+        patched.cache_clear = lambda: None  # type: ignore[attr-defined]
+        self._real = ytmd.detect_js_runtimes
+        ytmd.detect_js_runtimes = patched  # type: ignore[assignment]
+        self.addCleanup(lambda: setattr(ytmd, "detect_js_runtimes", self._real))
+
+    def test_auto_prefers_deno(self) -> None:
+        self._with({"node": "22", "deno": "2.3"})
+        self.assertEqual(ytmd.chosen_js_runtime(ytmd.DEFAULT_SETTINGS), "deno")
+
+    def test_auto_falls_back_to_node(self) -> None:
+        self._with({"bun": "1.3", "node": "22"})
+        self.assertEqual(ytmd.chosen_js_runtime(ytmd.DEFAULT_SETTINGS), "node")
+
+    def test_auto_with_nothing_installed(self) -> None:
+        self._with({})
+        self.assertEqual(ytmd.chosen_js_runtime(ytmd.DEFAULT_SETTINGS), "")
+
+    def test_explicit_choice_honoured(self) -> None:
+        self._with({"node": "22", "deno": "2.3"})
+        self.assertEqual(ytmd.chosen_js_runtime(dict(ytmd.DEFAULT_SETTINGS, jsRuntime="node")), "node")
+
+    def test_explicit_choice_that_is_missing_reports_none(self) -> None:
+        self._with({"node": "22"})
+        self.assertEqual(ytmd.chosen_js_runtime(dict(ytmd.DEFAULT_SETTINGS, jsRuntime="deno")), "")
+
+    def test_deno_is_left_implicit(self) -> None:
+        self._with({"deno": "2.3"})
+        opts: dict[str, Any] = {}
+        ytmd.apply_js_runtime_opts(opts, ytmd.DEFAULT_SETTINGS)
+        self.assertNotIn("js_runtimes", opts)  # yt-dlp already defaults to deno
+
+    def test_non_default_runtime_is_declared(self) -> None:
+        self._with({"node": "22"})
+        opts: dict[str, Any] = {}
+        ytmd.apply_js_runtime_opts(opts, ytmd.DEFAULT_SETTINGS)
+        self.assertEqual(opts["js_runtimes"], {"node": {}})
+
+    def test_real_ytdlp_accepts_the_dict_form(self) -> None:
+        # The Python API wants {name: {config}}; the CLI's list form is rejected.
+        with REAL_YDL({"quiet": True, "js_runtimes": {"node": {}}}):
+            pass
+        with self.assertRaises(ValueError):
+            REAL_YDL({"quiet": True, "js_runtimes": ["node"]})
+
+    def test_detection_returns_a_name_to_version_mapping(self) -> None:
+        found = self._real() if hasattr(self, "_real") else ytmd.detect_js_runtimes()
+        self.assertIsInstance(found, dict)
+        for name, version in found.items():
+            self.assertIn(name, ytmd.JS_RUNTIME_PRIORITY)
+            self.assertIsInstance(version, str)
+
+
 # --------------------------------------------------------------------------- #
 # Resolver
 # --------------------------------------------------------------------------- #
@@ -341,6 +402,21 @@ class TestResolver(unittest.TestCase):
         install_fake_ydl({"*": None})
         with self.assertRaises(ValueError):
             ytmd.resolve_source("x", ytmd.DEFAULT_SETTINGS)
+
+    def test_failure_message_surfaces_the_real_ytdlp_error(self) -> None:
+        """ignoreerrors hands back None, so the reason only exists in the log."""
+        class LoggingFake(FakeYDL):
+            def extract_info(self, url: str, download: bool = False) -> Any:
+                logger = self.opts.get("logger")
+                if logger:
+                    logger.error("ERROR: [youtube] abc: Sign in to confirm you are not a bot")
+                return None
+
+        ytmd.yt_dlp.YoutubeDL = LoggingFake  # type: ignore[misc]
+        self.addCleanup(restore_ydl)
+        with self.assertRaises(ValueError) as caught:
+            ytmd.resolve_source("https://youtube.com/playlist?list=PL1", ytmd.DEFAULT_SETTINGS)
+        self.assertIn("not a bot", str(caught.exception))
 
 
 # --------------------------------------------------------------------------- #

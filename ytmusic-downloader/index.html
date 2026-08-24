@@ -483,6 +483,7 @@ select.field { appearance: none; padding-right: 30px;
   <div class="topbar__status">
     <span class="pill pill--optional" id="pill-ytdlp" title="yt-dlp version"><span class="dot"></span>yt-dlp …</span>
     <span class="pill pill--optional" id="pill-ffmpeg" title="ffmpeg availability">ffmpeg …</span>
+    <span class="pill pill--optional" id="pill-js" title="JavaScript runtime, needed by yt-dlp to read YouTube">js …</span>
     <button class="btn btn--icon btn--ghost sheet-toggle" id="btn-options" title="Options" aria-label="Open options"><svg><use href="#i-sliders"/></svg></button>
     <button class="btn btn--icon btn--ghost" id="btn-theme" title="Switch theme" aria-label="Switch theme"><svg><use href="#i-moon"/></svg></button>
     <button class="btn btn--icon btn--ghost" id="btn-quit" title="Stop the local service" aria-label="Stop the local service"><svg><use href="#i-power"/></svg></button>
@@ -762,6 +763,18 @@ select.field { appearance: none; padding-right: 30px;
             <div class="opt">
               <label for="s-retries">Retries per track</label>
               <input class="field" id="s-retries" data-setting="retries" type="number" min="0" max="20" step="1">
+            </div>
+            <div class="opt">
+              <label for="s-jsRuntime">JavaScript runtime</label>
+              <select class="field" id="s-jsRuntime" data-setting="jsRuntime">
+                <option value="auto">Auto-detect</option>
+                <option value="deno">Deno</option>
+                <option value="node">Node.js</option>
+                <option value="quickjs">QuickJS</option>
+                <option value="bun">Bun</option>
+              </select>
+              <div class="opt__hint" id="js-hint">yt-dlp needs one of these to read YouTube. It only looks for
+                Deno on its own, so pick another if that is what you have installed.</div>
             </div>
             <div class="opt">
               <label for="s-ffmpegLocation">ffmpeg location (optional)</label>
@@ -1066,6 +1079,8 @@ select.field { appearance: none; padding-right: 30px;
     syncConditionalFields();
     updateNamePreview();
     if (el.dataset.setting === "outputDir") checkPath();
+    if (el.dataset.setting === "jsRuntime") renderJsPill();
+    if (el.dataset.setting === "ffmpegLocation") refreshHealthAfterSave();
     if (el.dataset.setting === "showThumbnails") scheduleRender();
     saveSettings();
   }
@@ -1785,6 +1800,43 @@ select.field { appearance: none; padding-right: 30px;
    * boot
    * ------------------------------------------------------------------ */
 
+  const JS_RUNTIME_PRIORITY = ["deno", "node", "quickjs", "bun"];  // matches ytmd.py
+
+  function chosenJsRuntime() {
+    const available = (state.health && state.health.jsRuntimes) || {};
+    const select = $("#s-jsRuntime");
+    const preference = select ? select.value : "auto";
+    if (preference !== "auto") return preference in available ? preference : "";
+    for (let i = 0; i < JS_RUNTIME_PRIORITY.length; i++) {
+      if (JS_RUNTIME_PRIORITY[i] in available) return JS_RUNTIME_PRIORITY[i];
+    }
+    return "";
+  }
+
+  function renderJsPill() {
+    const pill = $("#pill-js");
+    const available = (state.health && state.health.jsRuntimes) || {};
+    const names = Object.keys(available);
+    const chosen = chosenJsRuntime();
+    if (chosen) {
+      pill.textContent = "js: " + chosen;
+      pill.className = "pill pill--optional pill--ok";
+      pill.title = "yt-dlp will use " + chosen + " " + (available[chosen] || "") +
+        (names.length > 1 ? " (also found: " + names.filter(function (n) { return n !== chosen; }).join(", ") + ")" : "");
+      $("#js-hint").textContent = "Using " + chosen + " " + (available[chosen] || "") + ".";
+    } else if (names.length) {
+      pill.textContent = "js: not selected";
+      pill.className = "pill pill--optional pill--warn";
+      pill.title = "Found " + names.join(", ") + " but the current choice is unavailable.";
+      $("#js-hint").textContent = "Your chosen runtime was not found. Available here: " + names.join(", ") + ".";
+    } else {
+      pill.textContent = "no js runtime";
+      pill.className = "pill pill--optional pill--err";
+      pill.title = "yt-dlp needs a JavaScript runtime to read YouTube. Install Deno or Node.";
+      $("#js-hint").textContent = "None found. Install Deno (deno.com) or Node.js — without one, yt-dlp cannot read YouTube.";
+    }
+  }
+
   function showFatal(message) {
     document.body.innerHTML =
       '<div style="display:grid;place-items:center;height:100vh;padding:24px;text-align:center;font-family:system-ui">' +
@@ -1792,6 +1844,22 @@ select.field { appearance: none; padding-right: 30px;
       '<p style="color:#888;font-size:13px;line-height:1.5">' + message + "</p>" +
       '<p style="color:#888;font-size:13px;margin-top:10px">Start it with <code>python3 ytmd.py</code> and open the URL it prints.</p></div></div>';
   }
+
+  function refreshHealth() {
+    return api("/api/health").then(function (health) {
+      state.health = health;
+      renderJsPill();
+      syncConditionalFields();
+    }).catch(function () {});
+  }
+
+  // ffmpeg detection happens server-side, so the settings must land there first.
+  const refreshHealthAfterSave = debounce(function () {
+    api("/api/settings", { method: "POST", body: { settings: readSettingsFromUI() } })
+      .then(function (res) { state.settings = res.settings; })
+      .then(refreshHealth)
+      .catch(function () {});
+  }, 700);
 
   Promise.all([api("/api/health"), api("/api/settings")])
     .then(function (results) {
@@ -1806,6 +1874,7 @@ select.field { appearance: none; padding-right: 30px;
       ffPill.textContent = state.health.ffmpeg ? "ffmpeg ready" : "ffmpeg missing";
       ffPill.className = "pill pill--optional " + (state.health.ffmpeg ? "pill--ok" : "pill--warn");
       ffPill.title = state.health.ffmpeg ? state.health.ffmpegDir : "Install ffmpeg for conversion, tags and cover art.";
+      renderJsPill();
 
       applySettingsToUI();
       checkPath();

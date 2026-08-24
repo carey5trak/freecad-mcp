@@ -24,6 +24,7 @@ Terms of Service.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import platform
@@ -69,13 +70,22 @@ LOOPBACK_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "[::1]", "::1"})
 try:
     import yt_dlp
     from yt_dlp.utils import DownloadError, sanitize_filename
-except ImportError:  # pragma: no cover - exercised only without the dependency
+except ImportError as _import_error:  # pragma: no cover - needs a broken install
+    if (_import_error.name or "").split(".")[0] == "yt_dlp":
+        sys.stderr.write(
+            "\n  yt-dlp is not installed.\n\n"
+            "  Install it with:  python3 -m pip install -r requirements.txt\n"
+            "              or:  python3 -m pip install --upgrade yt-dlp\n\n"
+        )
+        raise SystemExit(2)
+    # Something yt-dlp itself needs is missing, or a local file is shadowing a
+    # stdlib module. Say so rather than blaming the wrong package.
     sys.stderr.write(
-        "\n  yt-dlp is not installed.\n\n"
-        "  Install it with:  python3 -m pip install -r requirements.txt\n"
-        "              or:  python3 -m pip install --upgrade yt-dlp\n\n"
+        f"\n  yt-dlp could not be loaded: {_import_error}\n\n"
+        f"  A module named {_import_error.name!r} failed to import. If a file in the\n"
+        "  current directory shares its name with a standard library module, rename it.\n\n"
     )
-    raise SystemExit(2)
+    raise
 
 try:  # DownloadCancelled is re-raised untouched by YoutubeDL's error handling.
     from yt_dlp.utils import DownloadCancelled as _DownloadCancelledBase
@@ -151,6 +161,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "cookiesFrom": "none",  # none | file | chrome | firefox | edge | brave | chromium | opera | vivaldi | safari
     "cookieFile": "",
     "ffmpegLocation": "",
+    "jsRuntime": "auto",  # auto | deno | node | quickjs | bun
     # UI-only, persisted here so the app survives a browser cache wipe
     "theme": "system",
     "showThumbnails": True,
@@ -169,6 +180,7 @@ _ENUMS: dict[str, frozenset[str]] = {
     "cookiesFrom": frozenset(
         {"none", "file", "chrome", "chromium", "firefox", "edge", "brave", "opera", "vivaldi", "safari"}
     ),
+    "jsRuntime": frozenset({"auto", "deno", "node", "quickjs", "bun"}),
     "theme": frozenset({"system", "dark", "light"}),
 }
 _CLAMPS: dict[str, tuple[int, int]] = {
@@ -277,6 +289,58 @@ def find_ffmpeg(configured: str = "") -> Optional[str]:
             return str(candidate.parent)
     found = shutil.which("ffmpeg")
     return str(Path(found).parent) if found else None
+
+
+# yt-dlp's priority order; the first available one is what it will actually use.
+JS_RUNTIME_PRIORITY = ("deno", "node", "quickjs", "bun")
+
+
+@functools.lru_cache(maxsize=1)
+def detect_js_runtimes() -> dict[str, str]:
+    """Which JavaScript runtimes can yt-dlp actually use on this machine?
+
+    Recent yt-dlp needs one to extract from YouTube at all, and only Deno is
+    enabled by default - so a machine with Node but no Deno looks broken until
+    the runtime is named explicitly.
+    """
+    found: dict[str, str] = {}
+    try:
+        from yt_dlp.globals import supported_js_runtimes
+
+        for name, runtime_cls in supported_js_runtimes.value.items():
+            try:
+                info = runtime_cls().info
+            except Exception:  # noqa: BLE001 - probing must never be fatal
+                continue
+            if info is not None:
+                found[name] = getattr(info, "version", "") or "present"
+    except Exception:  # noqa: BLE001 - older yt-dlp has no runtime plugins
+        pass
+    if not found:  # fall back to a plain PATH lookup
+        for name in JS_RUNTIME_PRIORITY:
+            if shutil.which(name):
+                found[name] = "present"
+    return found
+
+
+def chosen_js_runtime(settings: dict[str, Any]) -> str:
+    """The runtime yt-dlp will end up using, or '' if there is none."""
+    preference = settings.get("jsRuntime", "auto")
+    available = detect_js_runtimes()
+    if preference != "auto":
+        return preference if preference in available else ""
+    for name in JS_RUNTIME_PRIORITY:
+        if name in available:
+            return name
+    return ""
+
+
+def apply_js_runtime_opts(opts: dict[str, Any], settings: dict[str, Any]) -> None:
+    """Enable a non-default runtime when that is the only one installed."""
+    name = chosen_js_runtime(settings)
+    # yt-dlp already defaults to deno, so only speak up for the others.
+    if name and name != "deno":
+        opts["js_runtimes"] = {name: {}}
 
 
 def safe_component(name: str, ascii_only: bool = False) -> str:
@@ -393,7 +457,7 @@ def resolve_source(raw_url: str, settings: dict[str, Any]) -> dict[str, Any]:
     if not source:
         raise ValueError("Enter a playlist URL, a video URL, or something to search for.")
 
-    messages: list[str] = []
+    messages: list[tuple[str, str]] = []
     opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": False,
@@ -402,17 +466,29 @@ def resolve_source(raw_url: str, settings: dict[str, Any]) -> dict[str, Any]:
         "extract_flat": "in_playlist",
         "ignoreerrors": True,
         "playlistend": MAX_RESOLVE_ENTRIES,
-        "logger": _CollectingLogger(lambda level, msg: messages.append(msg) if level in {"warning", "error"} else None),
+        "logger": _CollectingLogger(
+            lambda level, msg: messages.append((level, msg)) if level in {"warning", "error"} else None
+        ),
     }
     apply_cookie_opts(opts, settings)
+    apply_js_runtime_opts(opts, settings)
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(source, download=False)
     if info is None:
-        raise ValueError(
-            "Nothing could be read from that link. If it is a private or "
-            "'Liked music' playlist, set a cookie source in Options first."
-        )
+        # ignoreerrors means yt-dlp hands back None instead of raising, so the
+        # real reason only exists in the log we just collected.
+        detail = next((clean_error(m) for level, m in messages if level == "error"), "")
+        if not detail:
+            detail = next((clean_error(m) for level, m in messages if level == "warning"), "")
+        hints = []
+        if not detect_js_runtimes():
+            hints.append(
+                "No JavaScript runtime was found - current yt-dlp needs one to read YouTube. "
+                "Install Deno (or Node) and pick it under Options."
+            )
+        hints.append("If this is a private or 'Liked music' playlist, set a cookie source in Options.")
+        raise ValueError(" ".join(["yt-dlp could not read that link.", detail, *hints]).replace("  ", " ").strip())
     info = yt_dlp.YoutubeDL().sanitize_info(info)
 
     raw_entries: list[dict[str, Any]] = []
@@ -464,7 +540,7 @@ def resolve_source(raw_url: str, settings: dict[str, Any]) -> dict[str, Any]:
         "count": len(tracks),
         "totalDuration": sum(t["duration"] or 0 for t in tracks),
         "tracks": tracks,
-        "warnings": messages[:20],
+        "warnings": [m for _level, m in messages][:20],
         "truncated": len(tracks) >= MAX_RESOLVE_ENTRIES,
     }
 
@@ -627,6 +703,7 @@ def build_ydl_opts(
         opts["download_archive"] = str(archive_path)
 
     apply_cookie_opts(opts, settings)
+    apply_js_runtime_opts(opts, settings)
     return opts
 
 
@@ -1248,6 +1325,8 @@ class Handler(BaseHTTPRequestHandler):
                     "ffmpeg": bool(ffmpeg_dir),
                     "ffmpegDir": ffmpeg_dir or "",
                     "metadataParser": _TITLE_INTERPRETER is not None,
+                    "jsRuntimes": detect_js_runtimes(),
+                    "jsRuntime": chosen_js_runtime(state.settings.get()),
                     "uptime": round(time.time() - state.started, 1),
                 },
             )
@@ -1493,6 +1572,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(BANNER.format(app=APP_NAME, version=APP_VERSION))
     print(f"  yt-dlp    {yt_dlp.version.__version__}")
     print(f"  ffmpeg    {ffmpeg_dir or 'NOT FOUND - audio conversion and tagging are disabled'}")
+    runtime = chosen_js_runtime(settings_store.get())
+    runtimes = detect_js_runtimes()
+    print(f"  js        {runtime + ' ' + runtimes.get(runtime, '') if runtime else 'NOT FOUND - YouTube extraction will likely fail'}")
     print(f"  saving to {settings_store.get().get('outputDir')}")
     print(f"  settings  {settings_store.path}")
     print()

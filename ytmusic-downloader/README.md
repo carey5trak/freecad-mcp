@@ -54,9 +54,32 @@ The app shows this notice on first run. Dismissing it does not change what is le
 |---|---|
 | **Python** | 3.9 or newer |
 | **yt-dlp** | installed via `requirements.txt` |
+| **A JavaScript runtime** | **required for YouTube** — Deno, Node, Bun or QuickJS. See below. |
 | **ffmpeg** | *optional but strongly recommended* — without it there is no MP3 conversion, no tags and no cover art |
 
-Installing ffmpeg:
+### The JavaScript runtime
+
+Current yt-dlp cannot read YouTube without a JS runtime, because it has to execute
+YouTube's player code to work out stream URLs. It only looks for **Deno** on its own — so a
+machine with Node installed and no Deno looks broken until the runtime is named explicitly.
+
+This app detects what you have, shows it in the header, and tells yt-dlp to use it. If none
+is found the header says so in red, because nothing will work until you install one:
+
+```bash
+# Deno - what yt-dlp prefers
+curl -fsSL https://deno.land/install.sh | sh      # macOS / Linux
+winget install DenoLand.Deno                      # Windows
+# ...or Node, which you may already have
+brew install node / sudo apt install nodejs / winget install OpenJS.NodeJS
+```
+
+Pick a specific one under **Options → Network & access → JavaScript runtime** if
+auto-detection chooses wrong.
+
+### ffmpeg
+
+Installing it:
 
 ```bash
 # macOS
@@ -198,6 +221,10 @@ Set a cookie source, keep *Pause between tracks* on, lower the parallel-download
 and make sure yt-dlp is up to date. Some clients now also need a PO-token provider such as
 [`bgutil-ytdlp-pot-provider`](https://github.com/Brainicism/bgutil-ytdlp-pot-provider);
 install it into the same environment and yt-dlp picks it up automatically.
+
+**"no js runtime" in the header (red)** — yt-dlp cannot read YouTube at all without one.
+Install Deno or Node (above) and restart the service. If you *do* have one installed but it
+still says missing, name it explicitly under **Options → Network & access**.
 
 **"ffmpeg missing"** in the header — install it (above) and restart the service. Until then
 the format and tagging options are disabled and files are saved exactly as YouTube served them.
