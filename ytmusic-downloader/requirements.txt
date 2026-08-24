@@ -1,1 +1,14 @@
-yt-dlp>=2024.8.6
+# The [default] extra is not optional in practice:
+#   mutagen      - required to embed cover art into opus/flac/ogg, and yt-dlp
+#                  raises rather than skipping when it is missing
+#   yt-dlp-ejs   - the JavaScript that solves YouTube's signature challenges
+# A bare `pip install yt-dlp` installs neither.
+yt-dlp[default]>=2025.11.12
+
+# yt-dlp also needs a JavaScript runtime to read YouTube at all, and only looks
+# for Deno on its own. If you do not already have Deno or Node installed, the
+# simplest way to get one is to let pip provide it:
+#
+#     pip install "yt-dlp[deno]"
+#
+# The app detects deno / node / quickjs / bun and tells you what it found.

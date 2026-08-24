@@ -323,6 +323,42 @@ def detect_js_runtimes() -> dict[str, str]:
     return found
 
 
+# yt-dlp embeds cover art into these containers through mutagen, and raises
+# EmbedThumbnailPPError rather than skipping when mutagen is absent.
+MUTAGEN_ONLY_FORMATS = frozenset({"opus", "flac", "vorbis"})
+
+
+@functools.lru_cache(maxsize=1)
+def has_mutagen() -> bool:
+    try:
+        from yt_dlp.dependencies import mutagen
+
+        if mutagen is not None:
+            return True
+    except Exception:  # noqa: BLE001 - fall through to a direct import
+        pass
+    try:
+        import mutagen  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def thumbnail_embed_blocked(settings: dict[str, Any]) -> str:
+    """Explain why cover art cannot be embedded, or '' when it can."""
+    if not settings.get("embedThumbnail"):
+        return ""
+    if settings.get("mode") != "audio":
+        return ""
+    audio_format = settings.get("audioFormat", "mp3")
+    if audio_format in MUTAGEN_ONLY_FORMATS and not has_mutagen():
+        return (
+            f"Cover art cannot be embedded into {audio_format} without mutagen. "
+            "Install it with: pip install \"yt-dlp[default]\""
+        )
+    return ""
+
+
 def chosen_js_runtime(settings: dict[str, Any]) -> str:
     """The runtime yt-dlp will end up using, or '' if there is none."""
     preference = settings.get("jsRuntime", "auto")
@@ -584,7 +620,6 @@ def build_postprocessors(settings: dict[str, Any], has_ffmpeg: bool) -> list[dic
 
     if settings.get("skipNonMusic"):
         chain.append({"key": "SponsorBlock", "categories": ["music_offtopic"], "when": "after_filter"})
-        chain.append({"key": "ModifyChapters", "remove_sponsor_segments": ["music_offtopic"]})
 
     if settings.get("mode") == "audio":
         audio_format = settings.get("audioFormat", "mp3")
@@ -598,13 +633,18 @@ def build_postprocessors(settings: dict[str, Any], has_ffmpeg: bool) -> list[dic
                 }
             )
 
-    if settings.get("embedMetadata"):
-        chain.append({"key": "FFmpegMetadata", "add_metadata": True, "add_chapters": True, "add_infojson": False})
-
     if settings.get("writeSubtitles") and settings.get("mode") == "video":
         chain.append({"key": "FFmpegEmbedSubtitle", "already_have_subtitle": False})
 
-    if settings.get("embedThumbnail"):
+    # ModifyChapters runs after extraction in yt-dlp's own ordering, so the cut
+    # is applied to the audio file rather than the source video.
+    if settings.get("skipNonMusic"):
+        chain.append({"key": "ModifyChapters", "remove_sponsor_segments": ["music_offtopic"]})
+
+    if settings.get("embedMetadata"):
+        chain.append({"key": "FFmpegMetadata", "add_metadata": True, "add_chapters": True, "add_infojson": False})
+
+    if settings.get("embedThumbnail") and not thumbnail_embed_blocked(settings):
         chain.append({"key": "EmbedThumbnail", "already_have_thumbnail": False})
 
     return chain
@@ -975,6 +1015,9 @@ class JobManager:
             return
 
         archive_path = (out_dir / ".ytmd-archive.txt") if settings.get("useArchive") else None
+        blocked = thumbnail_embed_blocked(settings)
+        if blocked:
+            job.add_log("warning", blocked)
         if not has_ffmpeg:
             job.add_log(
                 "warning",
@@ -1370,6 +1413,7 @@ class Handler(BaseHTTPRequestHandler):
                     "ffmpeg": bool(ffmpeg_dir),
                     "ffmpegDir": ffmpeg_dir or "",
                     "metadataParser": _TITLE_INTERPRETER is not None,
+                    "mutagen": has_mutagen(),
                     "jsRuntimes": detect_js_runtimes(),
                     "jsRuntime": chosen_js_runtime(state.settings.get()),
                     "uptime": round(time.time() - state.started, 1),

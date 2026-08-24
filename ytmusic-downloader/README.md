@@ -53,7 +53,7 @@ The app shows this notice on first run. Dismissing it does not change what is le
 | | |
 |---|---|
 | **Python** | 3.9 or newer |
-| **yt-dlp** | installed via `requirements.txt` |
+| **yt-dlp** | installed via `requirements.txt` — note this needs `yt-dlp[default]`, not a bare `yt-dlp` |
 | **A JavaScript runtime** | **required for YouTube** — Deno, Node, Bun or QuickJS. See below. |
 | **ffmpeg** | *optional but strongly recommended* — without it there is no MP3 conversion, no tags and no cover art |
 
@@ -108,8 +108,18 @@ python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
+# no Deno or Node yet? pip can supply one:
+pip install "yt-dlp[deno]"
+
 python3 ytmd.py
 ```
+
+> **Install `yt-dlp[default]`, not plain `yt-dlp`.** A bare install omits two
+> packages the app relies on: `yt-dlp-ejs`, which solves YouTube's signature
+> challenges, and `mutagen`, without which yt-dlp *raises* rather than skips
+> when asked to embed cover art into Opus, FLAC or Ogg — failing the whole
+> track. `requirements.txt` already asks for the right thing. The app reports
+> in the header if mutagen is missing and drops cover art rather than failing.
 
 Your browser opens on `http://127.0.0.1:8765/`. That's the whole app.
 
@@ -226,6 +236,10 @@ install it into the same environment and yt-dlp picks it up automatically.
 Install Deno or Node (above) and restart the service. If you *do* have one installed but it
 still says missing, name it explicitly under **Options → Network & access**.
 
+**Cover art missing on Opus/FLAC files** — that needs `mutagen`. Run
+`pip install "yt-dlp[default]"`. The app skips embedding rather than failing
+the track, and says so in the log.
+
 **"ffmpeg missing"** in the header — install it (above) and restart the service. Until then
 the format and tagging options are disabled and files are saved exactly as YouTube served them.
 
@@ -242,6 +256,41 @@ YouTube-side breakage is fixed in a yt-dlp release within days.
 **Port already in use** — `python3 ytmd.py --port 8899`.
 
 ---
+
+## If you would rather use something off the shelf
+
+Worth saying plainly: there is exactly one download engine in this space —
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense) — and every tool below,
+this one included, is a shell around it. They differ in where metadata comes
+from, whether tags get written, and whether you can pick individual tracks.
+
+| Project | License | Interface | Picks individual tracks? | Writes tags? |
+|---|---|---|---|---|
+| [MeTube](https://github.com/alexta69/metube) | AGPL-3.0 | Web (Docker) | Yes — queue checkboxes with *Auto Start = No* | No, deliberately |
+| [YTPTube](https://github.com/arabcoders/ytptube) | MIT | Web | No | NFO / artwork, no ID3 |
+| [Lidarr-YouTube-Downloader](https://github.com/Angrido/Lidarr-YouTube-Downloader) | MIT | Web | No — whole playlist per URL | Yes — MusicBrainz IDs, optional AcoustID |
+| [spotDL](https://github.com/spotDL/spotify-downloader) | MIT | CLI | No | Yes |
+| [ytdl-sub](https://github.com/jmbannon/ytdl-sub) | GPL-3.0 | CLI + YAML | No — subscriptions | Basic |
+| [beets](https://github.com/beetbox/beets) | MIT | CLI | n/a — runs *after* download | Best in class |
+
+**If you want a mature, battle-tested self-hosted queue, use MeTube.** One
+command, years of production use, and a far bigger maintenance base than this:
+
+```bash
+docker run -d -p 8081:8081 -v /path/to/downloads:/downloads ghcr.io/alexta69/metube
+```
+
+Pair it with `beet import` on the download folder and you have a stronger
+tagging pipeline than anything here.
+
+**What none of them do** is the specific thing this app is for: show you the
+playlist's contents *before* downloading anything, let you tick the tracks you
+want, and tag the results in the same pass. MeTube picks but will not tag, on
+principle. Lidarr-YouTube-Downloader tags well but takes a whole playlist URL.
+spotDL tags but is command-line only for playlists. Every "picker" in the
+category is queue triage *after* enqueueing, not a track list you inspect
+first. If that combination is not what you need, one of the tools above is
+almost certainly the better choice.
 
 ## Tests
 

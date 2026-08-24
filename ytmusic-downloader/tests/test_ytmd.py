@@ -308,6 +308,59 @@ class TestRealYtdlpAcceptsOurOptions(unittest.TestCase):
         for key in keys:
             self.assertIsNotNone(get_postprocessor(key), key)
 
+    def test_chain_follows_ytdlp_cli_ordering(self) -> None:
+        """yt-dlp runs ModifyChapters AFTER audio extraction, so the cut lands
+        on the audio file rather than the source video."""
+        settings = dict(ytmd.DEFAULT_SETTINGS, audioFormat="mp3", embedThumbnail=True,
+                        embedMetadata=True, skipNonMusic=True, parseArtistFromTitle=True)
+        keys = [pp["key"] for pp in ytmd.build_postprocessors(settings, has_ffmpeg=True)]
+        canonical = ["MetadataParser", "SponsorBlock", "FFmpegExtractAudio",
+                     "ModifyChapters", "FFmpegMetadata", "EmbedThumbnail"]
+        self.assertEqual([k for k in keys if k in canonical], canonical)
+
+    def test_ordering_matches_the_installed_ytdlp(self) -> None:
+        """Pin the expected order to yt-dlp's own CLI builder, not to a memory of it."""
+        import inspect
+        import re
+
+        import yt_dlp as _ytdlp
+
+        source = (Path(inspect.getfile(_ytdlp)).parent / "__init__.py").read_text()
+        body = re.search(r"def get_postprocessors\(opts\):(.*?)\ndef ", source, re.S)
+        self.assertIsNotNone(body, "could not locate yt-dlp's postprocessor builder")
+        upstream = re.findall(r"'key':\s*'([A-Za-z]+)'", body.group(1))  # type: ignore[union-attr]
+
+        settings = dict(ytmd.DEFAULT_SETTINGS, audioFormat="mp3", embedThumbnail=True,
+                        embedMetadata=True, skipNonMusic=True, parseArtistFromTitle=True)
+        ours = [pp["key"] for pp in ytmd.build_postprocessors(settings, has_ffmpeg=True)]
+        positions = [upstream.index(k) for k in ours if k in upstream]
+        self.assertEqual(positions, sorted(positions), f"our order {ours} disagrees with yt-dlp's {upstream}")
+
+    def test_thumbnail_embedding_is_skipped_when_mutagen_is_missing(self) -> None:
+        """yt-dlp raises rather than skipping, so the whole track would fail."""
+        real = ytmd.has_mutagen
+        ytmd.has_mutagen = lambda: False  # type: ignore[assignment]
+        self.addCleanup(lambda: setattr(ytmd, "has_mutagen", real))
+        for fmt in ("opus", "flac", "vorbis"):
+            with self.subTest(fmt=fmt):
+                settings = dict(ytmd.DEFAULT_SETTINGS, audioFormat=fmt, embedThumbnail=True)
+                keys = [pp["key"] for pp in ytmd.build_postprocessors(settings, has_ffmpeg=True)]
+                self.assertNotIn("EmbedThumbnail", keys)
+                self.assertIn("mutagen", ytmd.thumbnail_embed_blocked(settings))
+        for fmt in ("mp3", "m4a"):
+            with self.subTest(fmt=fmt):
+                settings = dict(ytmd.DEFAULT_SETTINGS, audioFormat=fmt, embedThumbnail=True)
+                keys = [pp["key"] for pp in ytmd.build_postprocessors(settings, has_ffmpeg=True)]
+                self.assertIn("EmbedThumbnail", keys)  # ffmpeg handles these
+                self.assertEqual(ytmd.thumbnail_embed_blocked(settings), "")
+
+    def test_thumbnail_embedding_kept_when_mutagen_is_present(self) -> None:
+        real = ytmd.has_mutagen
+        ytmd.has_mutagen = lambda: True  # type: ignore[assignment]
+        self.addCleanup(lambda: setattr(ytmd, "has_mutagen", real))
+        settings = dict(ytmd.DEFAULT_SETTINGS, audioFormat="opus", embedThumbnail=True)
+        self.assertIn("EmbedThumbnail", [pp["key"] for pp in ytmd.build_postprocessors(settings, has_ffmpeg=True)])
+
     def test_no_postprocessors_without_ffmpeg(self) -> None:
         settings = dict(ytmd.DEFAULT_SETTINGS, embedThumbnail=True, embedMetadata=True)
         self.assertEqual(ytmd.build_postprocessors(settings, has_ffmpeg=False), [])

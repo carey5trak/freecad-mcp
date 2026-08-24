@@ -721,6 +721,7 @@ select.field { appearance: none; padding-right: 30px;
             <p class="opt__hint" id="ffmpeg-warning" hidden>
               ffmpeg was not found, so conversion, tagging and cover art are switched off. Install it and restart.
             </p>
+            <p class="opt__hint" id="mutagen-warning" hidden style="color:var(--warn)"></p>
           </div>
         </details>
 
@@ -771,7 +772,7 @@ select.field { appearance: none; padding-right: 30px;
                 <option value="deno">Deno</option>
                 <option value="node">Node.js</option>
                 <option value="quickjs">QuickJS</option>
-                <option value="bun">Bun</option>
+                <option value="bun">Bun (deprecated upstream)</option>
               </select>
               <div class="opt__hint" id="js-hint">yt-dlp needs one of these to read YouTube. It only looks for
                 Deno on its own, so pick another if that is what you have installed.</div>
@@ -1011,6 +1012,20 @@ select.field { appearance: none; padding-right: 30px;
     });
     const parser = $("#s-parseArtistFromTitle");
     if (parser && state.health && !state.health.metadataParser) parser.disabled = true;
+
+    // yt-dlp needs mutagen to put cover art into opus/flac/ogg, and fails the
+    // whole track rather than skipping when it is missing.
+    const needsMutagen = ["opus", "flac", "vorbis"].indexOf($("#s-audioFormat").value) >= 0;
+    const missing = state.health && state.health.mutagen === false;
+    const warn = $("#mutagen-warning");
+    if (warn) {
+      const blocked = mode === "audio" && needsMutagen && missing && $("#s-embedThumbnail").checked;
+      warn.hidden = !blocked;
+      warn.textContent = blocked
+        ? "Cover art cannot be embedded into " + $("#s-audioFormat").value +
+          " without mutagen, so it will be skipped. Install it with: pip install \"yt-dlp[default]\""
+        : "";
+    }
   }
 
   function extensionForSettings() {
