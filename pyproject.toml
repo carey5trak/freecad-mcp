@@ -11,13 +11,24 @@ requires-python = ">=3.12"
 dependencies = [
     "mcp[cli]>=1.12.2",
     "validators>=0.34.0",
+    "yt-dlp>=2026.8.19",
 ]
 
 [project.scripts]
 freecad-mcp = "freecad_mcp.server:main"
+youtube-downloader = "youtube_downloader.cli:main"
 
 [tool.hatch.build.targets.sdist]
 exclude = ["assets", "results"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/freecad_mcp", "src/youtube_downloader"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [build-system]
 requires = ["hatchling"]

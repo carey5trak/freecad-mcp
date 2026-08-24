@@ -254,6 +254,18 @@ The `--host` value is validated on startup — it must be a valid IPv4/IPv6 addr
 * `reload_document`: Close and re-open a document to pick up changes made to its `.FCStd` file outside the GUI.
 * `run_fem_analysis`: Run the CalculiX solver on an existing `Fem::FemAnalysis` and return summary results (max von Mises stress, max displacement, node count, working directory). Auto-creates a `SolverCcxTools` if the analysis has none. See [`examples/cantilever_fem.py`](examples/cantilever_fem.py) for an end-to-end usage example.
 
+## YouTube downloader
+
+This repository also ships a standalone `youtube-downloader` command for
+downloading YouTube videos, extracting audio, and reading video metadata. It is
+independent of the FreeCAD MCP server. See
+[`docs/youtube-downloader.md`](docs/youtube-downloader.md).
+
+```bash
+uv run youtube-downloader download "https://youtu.be/VIDEO_ID" --quality 1080p
+uv run youtube-downloader audio "https://youtu.be/VIDEO_ID" --audio-format mp3
+```
+
 ## Contributors
 
 <a href="https://github.com/neka-nat/freecad-mcp/graphs/contributors">
