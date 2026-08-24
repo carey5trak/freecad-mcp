@@ -1,0 +1,1945 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="ytmd-token" content="__YTMD_TOKEN__">
+<meta name="ytmd-version" content="__YTMD_VERSION__">
+<meta name="color-scheme" content="dark light">
+<title>Playlist Grabber</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff3d3d'/%3E%3Cpath d='M13 8.2l10-1.8v11.9a3.4 3.4 0 1 1-2.1-3.14V9.1l-5.8 1.04v9.05a3.4 3.4 0 1 1-2.1-3.14V8.2z' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+/* ---------- design tokens ---------- */
+:root {
+  --bg: #f5f6f8;
+  --bg-grad: radial-gradient(1200px 600px at 15% -10%, #ffe9e9 0%, transparent 60%),
+             radial-gradient(900px 500px at 100% 0%, #e8eeff 0%, transparent 55%);
+  --panel: #ffffff;
+  --panel-2: #f0f2f6;
+  --panel-3: #e7eaf0;
+  --border: rgba(12, 16, 28, 0.10);
+  --border-strong: rgba(12, 16, 28, 0.20);
+  --text: #14171f;
+  --muted: #5b6270;
+  --faint: #646b7a;   /* 4.77:1 on --panel-2; carries per-track error text */
+  --accent: #e02020;
+  --accent-soft: rgba(224, 32, 32, 0.10);
+  --accent-fg: #ffffff;
+  --ok: #12915b;
+  --ok-soft: rgba(18, 145, 91, 0.12);
+  --warn: #a76a00;
+  --warn-soft: rgba(167, 106, 0, 0.13);
+  --err: #c62828;
+  --err-soft: rgba(198, 40, 40, 0.12);
+  --info-soft: rgba(60, 110, 220, 0.10);
+  --focus: #2f6df6;
+  --shadow-sm: 0 1px 2px rgba(12, 16, 28, .06), 0 1px 1px rgba(12, 16, 28, .04);
+  --shadow-md: 0 8px 24px -8px rgba(12, 16, 28, .18), 0 2px 6px rgba(12, 16, 28, .06);
+  --shadow-lg: 0 24px 60px -20px rgba(12, 16, 28, .30);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 18px;
+  --row-h: 62px;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+:root[data-theme="dark"], :root[data-theme="system"] {
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] { color-scheme: light; }
+}
+:root[data-theme="light"] { color-scheme: light; }
+
+/* dark palette applies for explicit dark, and for system when the OS is dark */
+:root[data-theme="dark"],
+:root[data-theme="system"] {
+  --bg: #0a0b0f;
+  --bg-grad: radial-gradient(1100px 560px at 12% -12%, rgba(224,32,32,.16) 0%, transparent 58%),
+             radial-gradient(900px 480px at 100% -5%, rgba(60,110,220,.14) 0%, transparent 55%);
+  --panel: #14161d;
+  --panel-2: #1a1d26;
+  --panel-3: #222631;
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --text: #e9ebf0;
+  --muted: #99a0ae;
+  --faint: #8b93a2;   /* 5.44:1 on --panel-2 */
+  --accent: #ff4444;
+  --accent-soft: rgba(255, 68, 68, 0.14);
+  --accent-fg: #ffffff;
+  --ok: #3ddc8a;
+  --ok-soft: rgba(61, 220, 138, 0.14);
+  --warn: #ffbe5c;
+  --warn-soft: rgba(255, 190, 92, 0.14);
+  --err: #ff6b61;
+  --err-soft: rgba(255, 107, 97, 0.14);
+  --info-soft: rgba(120, 160, 255, 0.12);
+  --focus: #7aa7ff;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.5);
+  --shadow-md: 0 10px 30px -12px rgba(0,0,0,.7), 0 2px 8px rgba(0,0,0,.35);
+  --shadow-lg: 0 30px 70px -24px rgba(0,0,0,.8);
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --bg: #f5f6f8;
+    --bg-grad: radial-gradient(1200px 600px at 15% -10%, #ffe9e9 0%, transparent 60%),
+               radial-gradient(900px 500px at 100% 0%, #e8eeff 0%, transparent 55%);
+    --panel: #ffffff;
+    --panel-2: #f0f2f6;
+    --panel-3: #e7eaf0;
+    --border: rgba(12, 16, 28, 0.10);
+    --border-strong: rgba(12, 16, 28, 0.20);
+    --text: #14171f;
+    --muted: #5b6270;
+    --faint: #646b7a;   /* 4.77:1 on --panel-2; carries per-track error text */
+    --accent: #e02020;
+    --accent-soft: rgba(224, 32, 32, 0.10);
+    --ok: #12915b;
+    --ok-soft: rgba(18, 145, 91, 0.12);
+    --warn: #a76a00;
+    --warn-soft: rgba(167, 106, 0, 0.13);
+    --err: #c62828;
+    --err-soft: rgba(198, 40, 40, 0.12);
+    --info-soft: rgba(60, 110, 220, 0.10);
+    --focus: #2f6df6;
+    --shadow-sm: 0 1px 2px rgba(12, 16, 28, .06), 0 1px 1px rgba(12, 16, 28, .04);
+    --shadow-md: 0 8px 24px -8px rgba(12, 16, 28, .18), 0 2px 6px rgba(12, 16, 28, .06);
+    --shadow-lg: 0 24px 60px -20px rgba(12, 16, 28, .30);
+  }
+}
+
+/* ---------- base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  background-color: var(--bg);
+  background-image: var(--bg-grad);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+h1, h2, h3, p, figure { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+:where(button, [role="button"]):not(:disabled) { cursor: pointer; }
+[hidden] { display: none !important; }
+::selection { background: var(--accent-soft); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+
+/* ---------- primitives ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 8px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2); color: var(--text);
+  font-weight: 550; font-size: 13px; white-space: nowrap;
+  transition: background .14s ease, border-color .14s ease, transform .08s ease, opacity .14s;
+}
+.btn:hover:not(:disabled) { background: var(--panel-3); border-color: var(--border-strong); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn svg { width: 15px; height: 15px; flex: none; }
+.btn--primary {
+  background: var(--accent); border-color: transparent; color: var(--accent-fg);
+  box-shadow: 0 1px 0 rgba(255,255,255,.14) inset, var(--shadow-sm);
+}
+.btn--primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.btn--danger { color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, transparent); background: var(--err-soft); }
+.btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 22%, transparent); }
+.btn--ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn--ghost:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
+.btn--sm { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
+.btn--icon { padding: 7px; width: 32px; height: 32px; }
+.btn--icon svg { width: 16px; height: 16px; }
+.btn--block { width: 100%; }
+
+.field {
+  width: 100%; padding: 9px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); background: var(--panel);
+  color: var(--text); transition: border-color .14s, box-shadow .14s;
+  min-width: 0;
+}
+.field::placeholder { color: var(--faint); }
+.field:hover { border-color: color-mix(in srgb, var(--border-strong) 160%, transparent); }
+.field:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent); }
+select.field { appearance: none; padding-right: 30px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+.field--mono { font-family: var(--mono); font-size: 12.5px; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+  white-space: nowrap;
+}
+.pill--ok { color: var(--ok); background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.pill--warn { color: var(--warn); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.pill--err { color: var(--err); background: var(--err-soft); border-color: color-mix(in srgb, var(--err) 30%, transparent); }
+.pill--accent { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+}
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tnum { font-variant-numeric: tabular-nums; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- topbar ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px max(16px, env(safe-area-inset-left)) 10px max(16px, env(safe-area-inset-right));
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: saturate(1.6) blur(14px);
+  -webkit-backdrop-filter: saturate(1.6) blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand__mark {
+  width: 30px; height: 30px; border-radius: 9px; flex: none;
+  background: linear-gradient(150deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #7b2ff7));
+  display: grid; place-items: center; color: #fff; box-shadow: var(--shadow-sm);
+}
+.brand__mark svg { width: 17px; height: 17px; }
+.brand__name { font-weight: 680; letter-spacing: -.015em; font-size: 15px; }
+.brand__sub { font-size: 11px; color: var(--faint); margin-top: -2px; }
+.topbar__spacer { flex: 1 1 auto; }
+.topbar__status { display: flex; gap: 6px; align-items: center; }
+@media (max-width: 720px) { .topbar__status .pill--optional { display: none; } .brand__sub { display: none; } }
+
+/* ---------- layout ---------- */
+.wrap {
+  max-width: 1480px; margin: 0 auto;
+  padding: 20px max(16px, env(safe-area-inset-left)) 0 max(16px, env(safe-area-inset-right));
+}
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (min-width: 1080px) { .layout { grid-template-columns: minmax(0, 1fr) 372px; } }
+.col-main { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+/* ---------- notice ---------- */
+.notice {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 13px 15px; border-radius: var(--radius);
+  background: var(--info-soft); border: 1px solid color-mix(in srgb, var(--focus) 26%, transparent);
+  font-size: 12.5px; line-height: 1.5;
+}
+.notice svg { width: 17px; height: 17px; flex: none; margin-top: 1px; color: var(--focus); }
+.notice a { color: var(--focus); }
+
+/* ---------- source card ---------- */
+.source { padding: 18px; }
+.source__row { display: flex; gap: 10px; align-items: stretch; }
+.source__input { position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; }
+.source__input svg { position: absolute; left: 12px; width: 16px; height: 16px; color: var(--faint); pointer-events: none; }
+.source__input .field { padding-left: 36px; padding-top: 11px; padding-bottom: 11px; font-size: 14.5px; }
+.source__hint { margin-top: 10px; font-size: 12px; color: var(--faint); display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.chip {
+  border: 1px dashed var(--border-strong); background: transparent; color: var(--muted);
+  padding: 2px 8px; border-radius: 999px; font-size: 11.5px;
+}
+.chip:hover { background: var(--panel-2); color: var(--text); border-style: solid; }
+@media (max-width: 620px) { .source__row { flex-direction: column; } }
+
+/* ---------- playlist header ---------- */
+.plhead { display: flex; gap: 15px; padding: 16px 18px; align-items: center; border-bottom: 1px solid var(--border); }
+.plhead__art {
+  width: 84px; height: 84px; border-radius: var(--radius); object-fit: cover; flex: none;
+  background: var(--panel-2); border: 1px solid var(--border);
+}
+.plhead__meta { min-width: 0; flex: 1 1 auto; }
+.plhead__title { font-size: 18px; font-weight: 660; letter-spacing: -.02em; line-height: 1.25; }
+.plhead__facts { margin-top: 5px; font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.plhead__facts span:not(:last-child)::after { content: "·"; margin-left: 10px; color: var(--faint); }
+@media (max-width: 620px) { .plhead__art { width: 60px; height: 60px; } .plhead__title { font-size: 16px; } }
+
+/* ---------- toolbar ---------- */
+.toolbar {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--panel-2);
+}
+.toolbar__search { position: relative; flex: 1 1 190px; min-width: 150px; display: flex; align-items: center; }
+.toolbar__search svg { position: absolute; left: 10px; width: 14px; height: 14px; color: var(--faint); pointer-events: none; }
+.toolbar__search .field { padding: 6px 10px 6px 30px; font-size: 13px; }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 7px; overflow: hidden; }
+.seg > button {
+  border: 0; background: var(--panel); color: var(--muted); padding: 5px 10px; font-size: 12px; font-weight: 550;
+}
+.seg > button + button { border-left: 1px solid var(--border); }
+.seg > button:hover { background: var(--panel-3); color: var(--text); }
+
+/* ---------- track list ---------- */
+.tracklist {
+  position: relative; overflow: auto; overscroll-behavior: contain;
+  height: clamp(300px, 50vh, 660px);
+  scrollbar-width: thin;
+}
+.tracklist__sizer { position: relative; width: 100%; }
+.row {
+  position: absolute; left: 0; right: 0; height: var(--row-h);
+  display: flex; align-items: center; gap: 11px; padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  contain: layout paint style;
+}
+.row:hover { background: var(--panel-2); }
+.row--selected { background: color-mix(in srgb, var(--accent) 6%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
+.row--selected:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+.row--unavailable { opacity: .5; }
+.tracklist:focus { outline: none; }
+.tracklist:focus .row--cursor { outline: 2px solid var(--focus); outline-offset: -2px; }
+.row__check { width: 16px; height: 16px; flex: none; accent-color: var(--accent); cursor: pointer; }
+.row__idx { width: 30px; flex: none; text-align: right; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.row__art {
+  width: 46px; height: 34px; border-radius: 5px; object-fit: cover; flex: none;
+  background: var(--panel-3); border: 1px solid var(--border);
+}
+.row__body { min-width: 0; flex: 1 1 auto; }
+.row__title { font-size: 13.5px; font-weight: 520; }
+.row__sub { font-size: 11.5px; color: var(--faint); margin-top: 1px; }
+.row__dur { flex: none; width: 46px; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.row__state { flex: none; width: 196px; display: flex; justify-content: flex-end; align-items: center; gap: 8px; overflow: hidden; }
+.row__bar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); transition: width .18s linear; }
+.row__pct { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.row__err { font-size: 11.5px; color: var(--err); max-width: 148px; }
+@media (max-width: 900px) { .row__state { width: 120px; } .row__pct { display: none; } }
+@media (max-width: 760px) { .row__dur { display: none; } }
+@media (max-width: 1079px) { .tracklist { height: clamp(320px, 58vh, 620px); } }
+@media (max-width: 620px) {
+  .actionbar { gap: 8px 10px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  .actionbar > .btn { flex: 1 1 auto; min-width: 0; }
+  .actionbar__progress { flex: 1 1 100%; order: 9; min-width: 0; }
+  .actionbar__stats { margin-top: 4px; }
+  .btn-label-optional { display: none; }
+}
+
+.empty { display: grid; place-items: center; gap: 12px; padding: 54px 20px; text-align: center; }
+.empty svg { width: 40px; height: 40px; color: var(--faint); }
+.empty h3 { font-size: 15px; font-weight: 620; }
+.empty p { font-size: 13px; color: var(--muted); max-width: 46ch; }
+
+/* ---------- options panel ---------- */
+.options { padding: 4px 0; }
+@media (min-width: 1080px) { .options { position: sticky; top: 68px; max-height: calc(100vh - 96px); overflow: auto; scrollbar-width: thin; } }
+.opt-group { border-bottom: 1px solid var(--border); }
+.opt-group:last-child { border-bottom: 0; }
+.opt-group > summary {
+  display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+  font-weight: 600; font-size: 13px; cursor: pointer; list-style: none; user-select: none;
+}
+.opt-group > summary::-webkit-details-marker { display: none; }
+.opt-group > summary::after {
+  content: ""; margin-left: auto; width: 7px; height: 7px; flex: none;
+  border-right: 1.8px solid var(--faint); border-bottom: 1.8px solid var(--faint);
+  transform: rotate(45deg) translate(-2px, -2px); transition: transform .16s ease;
+}
+.opt-group[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.opt-group > summary:hover { background: var(--panel-2); }
+.opt-group__body { padding: 2px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.opt-group__icon { width: 15px; height: 15px; color: var(--muted); flex: none; }
+
+.opt { display: flex; flex-direction: column; gap: 5px; }
+.opt > label, .opt__label { font-size: 12px; font-weight: 560; color: var(--muted); }
+.opt__hint { font-size: 11.5px; color: var(--faint); line-height: 1.4; }
+.opt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.check { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; padding: 2px 0; }
+.check input { width: 15px; height: 15px; margin: 2px 0 0; accent-color: var(--accent); flex: none; cursor: pointer; }
+.check__text { font-size: 12.5px; }
+.check__hint { font-size: 11px; color: var(--faint); margin-top: 1px; line-height: 1.35; }
+.check:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+.preview {
+  font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px;
+  padding: 7px 9px; word-break: break-all; line-height: 1.45;
+}
+.pathstat { font-size: 11.5px; display: flex; gap: 6px; align-items: center; }
+
+/* ---------- action bar ---------- */
+.actionbar {
+  position: sticky; bottom: 0; z-index: 30; margin-top: 18px;
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: saturate(1.6) blur(14px);
+  -webkit-backdrop-filter: saturate(1.6) blur(14px);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 30px -18px rgba(0,0,0,.55);
+}
+.actionbar__progress { flex: 1 1 240px; min-width: 180px; }
+.progress { height: 7px; border-radius: 999px; background: var(--panel-3); overflow: hidden; }
+.progress__fill {
+  height: 100%; width: 0%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #ff9d3d));
+  transition: width .25s ease;
+}
+.progress--done .progress__fill { background: var(--ok); }
+.actionbar__stats { margin-top: 6px; font-size: 11.5px; color: var(--muted); display: flex; gap: 4px 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+
+/* ---------- log drawer ---------- */
+.logbar {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  border-top: 1px solid var(--border); font-size: 12px; color: var(--muted);
+}
+.log {
+  max-height: 208px; overflow: auto; padding: 8px 14px 12px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+  border-top: 1px solid var(--border); background: var(--panel-2);
+  scrollbar-width: thin;
+}
+.log__line { display: flex; gap: 8px; white-space: pre-wrap; word-break: break-word; }
+.log__t { color: var(--faint); flex: none; }
+.log__line--warning { color: var(--warn); }
+.log__line--error { color: var(--err); }
+
+/* ---------- toasts ---------- */
+.toasts {
+  position: fixed; z-index: 90; right: 16px; bottom: 16px;
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+  pointer-events: none; max-width: min(380px, calc(100vw - 32px));
+}
+.toast {
+  pointer-events: auto; display: flex; gap: 10px; align-items: flex-start;
+  padding: 11px 13px; border-radius: var(--radius); font-size: 12.5px;
+  background: var(--panel); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);
+  animation: toast-in .22s cubic-bezier(.2,.9,.3,1);
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+.toast--err { border-color: color-mix(in srgb, var(--err) 45%, transparent); }
+.toast--ok { border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.toast svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+.toast--err svg { color: var(--err); }
+.toast--ok svg { color: var(--ok); }
+.toast__close { margin-left: 4px; background: none; border: 0; color: var(--faint); padding: 0 2px; }
+
+/* ---------- misc ---------- */
+.footer { padding: 22px 16px 32px; text-align: center; font-size: 11.5px; color: var(--faint); }
+.footer a { color: var(--muted); }
+.sheet-toggle { display: none; }
+@media (max-width: 1079px) {
+  .sheet-toggle { display: inline-flex; }
+  .col-side {
+    position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, #000 55%, transparent);
+    display: none; padding: 0;
+  }
+  .col-side[data-open="true"] { display: block; }
+  .col-side > .card {
+    position: absolute; right: 0; top: 0; bottom: 0; width: min(420px, 100%);
+    border-radius: 0; overflow: auto; box-shadow: var(--shadow-lg);
+  }
+  .col-side__head { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); z-index: 2; }
+}
+@media (min-width: 1080px) { .col-side__head { display: none; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-note" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4M12 17h.01"/></symbol>
+  <symbol id="i-format" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.4"/></symbol>
+  <symbol id="i-net" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+</defs></svg>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand__mark"><svg><use href="#i-note"/></svg></div>
+    <div>
+      <div class="brand__name">Playlist Grabber</div>
+      <div class="brand__sub">local yt-dlp front-end</div>
+    </div>
+  </div>
+  <div class="topbar__spacer"></div>
+  <div class="topbar__status">
+    <span class="pill pill--optional" id="pill-ytdlp" title="yt-dlp version"><span class="dot"></span>yt-dlp …</span>
+    <span class="pill pill--optional" id="pill-ffmpeg" title="ffmpeg availability">ffmpeg …</span>
+    <span class="pill pill--optional" id="pill-js" title="JavaScript runtime, needed by yt-dlp to read YouTube">js …</span>
+    <button class="btn btn--icon btn--ghost sheet-toggle" id="btn-options" title="Options" aria-label="Open options"><svg><use href="#i-sliders"/></svg></button>
+    <button class="btn btn--icon btn--ghost" id="btn-theme" title="Switch theme" aria-label="Switch theme"><svg><use href="#i-moon"/></svg></button>
+    <button class="btn btn--icon btn--ghost" id="btn-quit" title="Stop the local service" aria-label="Stop the local service"><svg><use href="#i-power"/></svg></button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="layout">
+    <div class="col-main">
+
+      <div class="notice" id="notice" hidden>
+        <svg><use href="#i-info"/></svg>
+        <div>
+          <strong>Download only what you have the right to keep.</strong>
+          Your own uploads, Creative&nbsp;Commons and public-domain works, the YouTube Audio Library, or anything
+          you are licensed for. Saving copyrighted music you do not have rights to is against YouTube's Terms of
+          Service — YouTube&nbsp;Premium and YouTube&nbsp;Music offer sanctioned offline playback.
+          <div style="margin-top:9px"><button class="btn btn--sm" id="btn-notice-ok">Got it</button></div>
+        </div>
+      </div>
+
+      <section class="card source">
+        <form id="form-source" autocomplete="off">
+          <div class="source__row">
+            <div class="source__input">
+              <svg><use href="#i-link"/></svg>
+              <label class="sr-only" for="url">Playlist, video or channel link</label>
+              <input class="field" id="url" name="url" type="text" spellcheck="false"
+                     placeholder="Paste a playlist link, a video link, or type something to search…">
+            </div>
+            <button class="btn btn--primary" id="btn-load" type="submit">
+              <svg><use href="#i-search"/></svg><span>Load</span>
+            </button>
+          </div>
+        </form>
+        <div class="source__hint">
+          <span>Works with</span>
+          <button class="chip" type="button" data-example="https://music.youtube.com/playlist?list=">music.youtube.com playlists</button>
+          <button class="chip" type="button" data-example="https://www.youtube.com/playlist?list=">youtube.com playlists</button>
+          <button class="chip" type="button" data-example="https://www.youtube.com/@">channels</button>
+          <span class="faint">· private playlists need a cookie source in Options</span>
+        </div>
+      </section>
+
+      <section class="card" id="panel-playlist" hidden>
+        <div class="plhead">
+          <img class="plhead__art" id="pl-art" alt="" width="84" height="84">
+          <div class="plhead__meta">
+            <h2 class="plhead__title truncate" id="pl-title">—</h2>
+            <div class="plhead__facts" id="pl-facts"></div>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="toolbar__search">
+            <svg><use href="#i-search"/></svg>
+            <label class="sr-only" for="filter">Filter tracks</label>
+            <input class="field" id="filter" type="search" placeholder="Filter tracks…  (press /)">
+          </div>
+          <div class="seg" role="group" aria-label="Selection">
+            <button type="button" id="sel-all">All</button>
+            <button type="button" id="sel-none">None</button>
+            <button type="button" id="sel-invert">Invert</button>
+          </div>
+          <select class="field" id="sort" style="width:auto" aria-label="Sort order">
+            <option value="original">Playlist order</option>
+            <option value="title">Title A→Z</option>
+            <option value="artist">Artist A→Z</option>
+            <option value="duration">Longest first</option>
+          </select>
+          <span class="topbar__spacer"></span>
+          <span class="pill pill--accent" id="sel-count" aria-live="polite">0 selected</span>
+        </div>
+        <div class="tracklist" id="tracklist" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="Tracks">
+          <div class="tracklist__sizer" id="sizer" role="presentation"></div>
+        </div>
+        <div class="logbar">
+          <button class="btn btn--sm btn--ghost" id="btn-log-toggle" aria-expanded="false" aria-controls="log">Show log</button>
+          <span class="topbar__spacer"></span>
+          <button class="btn btn--sm btn--ghost" id="btn-log-copy" title="Copy the log"><svg><use href="#i-copy"/></svg>Copy</button>
+        </div>
+        <div class="log" id="log" hidden></div>
+      </section>
+
+      <section class="card" id="panel-empty">
+        <div class="empty">
+          <svg><use href="#i-note"/></svg>
+          <h3>Nothing loaded yet</h3>
+          <p>Paste a YouTube&nbsp;Music or YouTube playlist link above and press <kbd>Enter</kbd>. Every track shows up
+             here so you can pick exactly what to keep before anything is downloaded.</p>
+        </div>
+      </section>
+
+      <div class="actionbar card" id="actionbar" hidden style="border-radius:var(--radius-lg)">
+        <button class="btn btn--primary" id="btn-start"><svg><use href="#i-download"/></svg><span id="btn-start-label">Download</span></button>
+        <button class="btn btn--danger" id="btn-cancel" hidden><svg><use href="#i-stop"/></svg>Stop</button>
+        <div class="actionbar__progress">
+          <div class="progress" id="progress" role="progressbar" aria-label="Download progress"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="progress__fill" id="progress-fill"></div>
+          </div>
+          <div class="actionbar__stats" id="stats"><span>Ready</span></div>
+        </div>
+        <button class="btn" id="btn-reveal" title="Open the download folder"><svg><use href="#i-folder"/></svg><span class="btn-label-optional">Open folder</span></button>
+      </div>
+    </div>
+
+    <div class="col-side" id="col-side">
+      <aside class="card options" role="region" aria-label="Options">
+        <div class="col-side__head">
+          <strong style="font-size:14px">Options</strong>
+          <span class="topbar__spacer"></span>
+          <button class="btn btn--icon btn--ghost" id="btn-options-close" aria-label="Close options"><svg><use href="#i-x"/></svg></button>
+        </div>
+
+        <details class="opt-group" open>
+          <summary><svg class="opt-group__icon"><use href="#i-format"/></svg>Format</summary>
+          <div class="opt-group__body">
+            <div class="opt">
+              <label for="s-mode">What to download</label>
+              <select class="field" id="s-mode" data-setting="mode">
+                <option value="audio">Audio only (music)</option>
+                <option value="video">Video</option>
+              </select>
+            </div>
+            <div class="opt-row" data-when-mode="audio">
+              <div class="opt">
+                <label for="s-audioFormat">Audio format</label>
+                <select class="field" id="s-audioFormat" data-setting="audioFormat">
+                  <option value="mp3">MP3</option>
+                  <option value="m4a">M4A / AAC</option>
+                  <option value="opus">Opus</option>
+                  <option value="flac">FLAC</option>
+                  <option value="wav">WAV</option>
+                  <option value="best">Keep original</option>
+                </select>
+              </div>
+              <div class="opt">
+                <label for="s-audioQuality">Bitrate</label>
+                <select class="field" id="s-audioQuality" data-setting="audioQuality">
+                  <option value="0">Best (VBR)</option>
+                  <option value="320">320 kbps</option>
+                  <option value="256">256 kbps</option>
+                  <option value="192">192 kbps</option>
+                  <option value="160">160 kbps</option>
+                  <option value="128">128 kbps</option>
+                  <option value="96">96 kbps</option>
+                </select>
+              </div>
+            </div>
+            <p class="opt__hint" data-when-mode="audio">
+              MP3 plays everywhere; M4A suits Apple devices; Opus is the smallest at a given quality.
+              YouTube only ever serves compressed audio, so FLAC and WAV re-wrap a lossy source rather than
+              restoring anything. “Keep original” skips re-encoding altogether.
+            </p>
+            <div class="opt-row" data-when-mode="video" hidden>
+              <div class="opt">
+                <label for="s-videoQuality">Resolution</label>
+                <select class="field" id="s-videoQuality" data-setting="videoQuality">
+                  <option value="best">Best available</option>
+                  <option value="2160">Up to 2160p</option>
+                  <option value="1440">Up to 1440p</option>
+                  <option value="1080">Up to 1080p</option>
+                  <option value="720">Up to 720p</option>
+                  <option value="480">Up to 480p</option>
+                  <option value="360">Up to 360p</option>
+                </select>
+              </div>
+              <div class="opt">
+                <label for="s-videoContainer">Container</label>
+                <select class="field" id="s-videoContainer" data-setting="videoContainer">
+                  <option value="mp4">MP4</option>
+                  <option value="mkv">MKV</option>
+                  <option value="webm">WebM</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details class="opt-group" open>
+          <summary><svg class="opt-group__icon"><use href="#i-folder"/></svg>Where files go</summary>
+          <div class="opt-group__body">
+            <div class="opt">
+              <label for="s-outputDir">Download folder</label>
+              <input class="field field--mono" id="s-outputDir" data-setting="outputDir" spellcheck="false">
+              <div class="pathstat" id="pathstat"></div>
+            </div>
+            <div class="opt">
+              <label for="s-folderMode">Sub-folder</label>
+              <select class="field" id="s-folderMode" data-setting="folderMode">
+                <option value="playlist">One folder per playlist</option>
+                <option value="artist">One folder per artist</option>
+                <option value="custom">A folder I name</option>
+                <option value="flat">No sub-folder</option>
+              </select>
+            </div>
+            <div class="opt" id="wrap-customFolder" hidden>
+              <label for="s-customFolder">Folder name</label>
+              <input class="field field--mono" id="s-customFolder" data-setting="customFolder" spellcheck="false" placeholder="My Mix">
+            </div>
+            <div class="opt">
+              <label for="s-fileTemplate">File name template</label>
+              <input class="field field--mono" id="s-fileTemplate" data-setting="fileTemplate" spellcheck="false">
+              <div class="opt__hint">yt-dlp template fields, e.g. <span class="mono">%(artist)s - %(title)s.%(ext)s</span></div>
+              <div class="preview" id="name-preview">—</div>
+            </div>
+            <label class="check"><input type="checkbox" id="s-numberTracks" data-setting="numberTracks">
+              <span><span class="check__text">Number tracks by playlist position</span>
+              <span class="check__hint">Prefixes each file with 01, 02, 03…</span></span></label>
+            <label class="check"><input type="checkbox" id="s-asciiFilenames" data-setting="asciiFilenames">
+              <span><span class="check__text">ASCII-safe file names</span>
+              <span class="check__hint">Good for SD cards, car stereos and older NAS boxes.</span></span></label>
+            <label class="check"><input type="checkbox" id="s-useArchive" data-setting="useArchive">
+              <span><span class="check__text">Remember what was downloaded</span>
+              <span class="check__hint">Keeps a small archive file so re-running a playlist only fetches new tracks.</span></span></label>
+            <label class="check"><input type="checkbox" id="s-writePlaylistFile" data-setting="writePlaylistFile">
+              <span><span class="check__text">Write an .m3u8 playlist file</span></span></label>
+          </div>
+        </details>
+
+        <details class="opt-group">
+          <summary><svg class="opt-group__icon"><use href="#i-tag"/></svg>Tags &amp; extras</summary>
+          <div class="opt-group__body">
+            <label class="check"><input type="checkbox" id="s-embedMetadata" data-setting="embedMetadata">
+              <span><span class="check__text">Write title / artist / album tags</span></span></label>
+            <label class="check"><input type="checkbox" id="s-embedThumbnail" data-setting="embedThumbnail">
+              <span><span class="check__text">Embed the thumbnail as cover art</span></span></label>
+            <label class="check"><input type="checkbox" id="s-parseArtistFromTitle" data-setting="parseArtistFromTitle">
+              <span><span class="check__text">Split “Artist – Title” video names</span>
+              <span class="check__hint">Useful for uploads that put the artist in the video title.</span></span></label>
+            <label class="check"><input type="checkbox" id="s-skipNonMusic" data-setting="skipNonMusic">
+              <span><span class="check__text">Trim non-music sections</span>
+              <span class="check__hint">Uses SponsorBlock's <span class="mono">music_offtopic</span> data to cut intros and outros.</span></span></label>
+            <label class="check" data-when-mode="video" hidden><input type="checkbox" id="s-writeSubtitles" data-setting="writeSubtitles">
+              <span><span class="check__text">Embed English subtitles</span></span></label>
+            <p class="opt__hint" id="ffmpeg-warning" hidden>
+              ffmpeg was not found, so conversion, tagging and cover art are switched off. Install it and restart.
+            </p>
+            <p class="opt__hint" id="mutagen-warning" hidden style="color:var(--warn)"></p>
+          </div>
+        </details>
+
+        <details class="opt-group">
+          <summary><svg class="opt-group__icon"><use href="#i-net"/></svg>Network &amp; access</summary>
+          <div class="opt-group__body">
+            <div class="opt-row">
+              <div class="opt">
+                <label for="s-concurrency">Parallel downloads</label>
+                <input class="field" id="s-concurrency" data-setting="concurrency" type="number" min="1" max="8" step="1">
+              </div>
+              <div class="opt">
+                <label for="s-rateLimitKbps">Speed cap (KB/s)</label>
+                <input class="field" id="s-rateLimitKbps" data-setting="rateLimitKbps" type="number" min="0" step="64" placeholder="0 = none">
+              </div>
+            </div>
+            <label class="check"><input type="checkbox" id="s-politeThrottle" data-setting="politeThrottle">
+              <span><span class="check__text">Pause between tracks</span>
+              <span class="check__hint">Slower, but much less likely to trip YouTube's bot check.</span></span></label>
+            <div class="opt">
+              <label for="s-cookiesFrom">Cookies (for private playlists)</label>
+              <select class="field" id="s-cookiesFrom" data-setting="cookiesFrom">
+                <option value="none">Don't use cookies</option>
+                <option value="chrome">From Chrome</option>
+                <option value="chromium">From Chromium</option>
+                <option value="firefox">From Firefox</option>
+                <option value="edge">From Edge</option>
+                <option value="brave">From Brave</option>
+                <option value="opera">From Opera</option>
+                <option value="vivaldi">From Vivaldi</option>
+                <option value="safari">From Safari</option>
+                <option value="file">From a cookies.txt file</option>
+              </select>
+              <div class="opt__hint">Close the browser first — it locks its own cookie database.</div>
+            </div>
+            <div class="opt" id="wrap-cookieFile" hidden>
+              <label for="s-cookieFile">cookies.txt path</label>
+              <input class="field field--mono" id="s-cookieFile" data-setting="cookieFile" spellcheck="false">
+            </div>
+            <div class="opt">
+              <label for="s-retries">Retries per track</label>
+              <input class="field" id="s-retries" data-setting="retries" type="number" min="0" max="20" step="1">
+            </div>
+            <div class="opt">
+              <label for="s-jsRuntime">JavaScript runtime</label>
+              <select class="field" id="s-jsRuntime" data-setting="jsRuntime">
+                <option value="auto">Auto-detect</option>
+                <option value="deno">Deno</option>
+                <option value="node">Node.js</option>
+                <option value="quickjs">QuickJS</option>
+                <option value="bun">Bun (deprecated upstream)</option>
+              </select>
+              <div class="opt__hint" id="js-hint">yt-dlp needs one of these to read YouTube. It only looks for
+                Deno on its own, so pick another if that is what you have installed.</div>
+            </div>
+            <div class="opt">
+              <label for="s-ffmpegLocation">ffmpeg location (optional)</label>
+              <input class="field field--mono" id="s-ffmpegLocation" data-setting="ffmpegLocation" spellcheck="false" placeholder="auto-detected">
+            </div>
+            <label class="check"><input type="checkbox" id="s-showThumbnails" data-setting="showThumbnails">
+              <span><span class="check__text">Show thumbnails in the list</span>
+              <span class="check__hint">Turn off to avoid loading images from YouTube.</span></span></label>
+          </div>
+        </details>
+      </aside>
+    </div>
+  </div>
+
+  <div class="footer">
+    Runs entirely on this machine · <span class="mono" id="foot-version">v—</span> ·
+    powered by <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noreferrer noopener">yt-dlp</a>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------ *
+   * plumbing
+   * ------------------------------------------------------------------ */
+
+  const $  = (sel, root) => (root || document).querySelector(sel);
+  const $$ = (sel, root) => Array.prototype.slice.call((root || document).querySelectorAll(sel));
+  const meta = (name) => { const el = $('meta[name="' + name + '"]'); return el ? el.content : ""; };
+
+  const TOKEN   = meta("ytmd-token");
+  const VERSION = meta("ytmd-version");
+  const ROW_H   = 62;
+  const OVERSCAN = 6;
+
+  const state = {
+    health: null,
+    settings: null,
+    resolved: null,      // { title, tracks: [...] } as returned by /api/resolve
+    tracks: [],          // every resolved track
+    view: [],            // filtered + sorted subset currently on screen
+    selected: new Set(), // track uid strings
+    itemState: new Map(),// uid -> live download state from the server
+    uidOf: new Map(),    // track -> uid (uid is index:videoId, matching the server)
+    cursor: -1,
+    jobId: null,
+    jobRunning: false,
+    jobStarted: 0,
+    logSeq: 0,
+    abort: null,
+    poll: null,
+    frame: 0,
+  };
+
+  /* ------------------------------------------------------------------ *
+   * tiny helpers
+   * ------------------------------------------------------------------ */
+
+  function api(path, opts) {
+    opts = opts || {};
+    const headers = { "X-Ytmd-Token": TOKEN };
+    if (opts.body !== undefined) headers["Content-Type"] = "application/json";
+    return fetch(path, {
+      method: opts.method || "GET",
+      headers: headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      cache: "no-store",
+      credentials: "omit",
+      signal: opts.signal,
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (e) { /* not json */ }
+        if (!res.ok) {
+          const err = new Error((data && data.error) || ("Request failed (HTTP " + res.status + ")"));
+          err.status = res.status;
+          throw err;
+        }
+        return data;
+      });
+    });
+  }
+
+  function fmtDuration(seconds) {
+    if (!seconds && seconds !== 0) return "—";
+    seconds = Math.max(0, Math.round(seconds));
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    const pad = (n) => (n < 10 ? "0" + n : String(n));
+    return h ? h + ":" + pad(m) + ":" + pad(s) : m + ":" + pad(s);
+  }
+
+  function fmtLongDuration(seconds) {
+    if (!seconds) return "";
+    const h = Math.floor(seconds / 3600);
+    const m = Math.round((seconds % 3600) / 60);
+    if (h && m) return h + " hr " + m + " min";
+    if (h) return h + " hr";
+    return m + " min";
+  }
+
+  function fmtBytes(n) {
+    if (!n && n !== 0) return "—";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return (i === 0 ? n : n.toFixed(n < 10 ? 1 : 0)) + " " + units[i];
+  }
+
+  function fmtEta(seconds) {
+    if (!seconds || seconds < 0 || !isFinite(seconds)) return "";
+    if (seconds < 60) return Math.round(seconds) + "s left";
+    if (seconds < 3600) return Math.round(seconds / 60) + "m left";
+    return (seconds / 3600).toFixed(1) + "h left";
+  }
+
+  function debounce(fn, ms) {
+    let timer = 0;
+    return function () {
+      const args = arguments, self = this;
+      clearTimeout(timer);
+      timer = setTimeout(function () { fn.apply(self, args); }, ms);
+    };
+  }
+
+  function icon(id, cls) {
+    return '<svg class="' + (cls || "") + '" aria-hidden="true"><use href="#' + id + '"/></svg>';
+  }
+
+  /* ------------------------------------------------------------------ *
+   * toasts
+   * ------------------------------------------------------------------ */
+
+  const toastHost = $("#toasts");
+
+  function toast(message, kind, ttl) {
+    const el = document.createElement("div");
+    el.className = "toast" + (kind ? " toast--" + kind : "");
+    el.innerHTML = icon(kind === "err" ? "i-alert" : kind === "ok" ? "i-check" : "i-info");
+    const body = document.createElement("div");
+    body.style.flex = "1 1 auto";
+    body.textContent = message;
+    el.appendChild(body);
+    const close = document.createElement("button");
+    close.className = "toast__close";
+    close.type = "button";
+    close.setAttribute("aria-label", "Dismiss");
+    close.innerHTML = icon("i-x");
+    close.style.width = "16px";
+    close.addEventListener("click", function () { el.remove(); });
+    el.appendChild(close);
+    toastHost.appendChild(el);
+    setTimeout(function () { el.remove(); }, ttl || (kind === "err" ? 9000 : 4500));
+    while (toastHost.children.length > 4) toastHost.removeChild(toastHost.firstChild);
+    return el;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * theme
+   * ------------------------------------------------------------------ */
+
+  const THEMES = ["system", "dark", "light"];
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    $("#btn-theme").innerHTML = icon(dark ? "i-moon" : "i-sun");
+    $("#btn-theme").title = "Theme: " + theme + " (click to change)";
+  }
+
+  $("#btn-theme").addEventListener("click", function () {
+    const next = THEMES[(THEMES.indexOf(state.settings.theme) + 1) % THEMES.length];
+    state.settings.theme = next;
+    applyTheme(next);
+    saveSettings();
+  });
+
+  /* ------------------------------------------------------------------ *
+   * settings <-> form
+   * ------------------------------------------------------------------ */
+
+  function settingInputs() { return $$("[data-setting]"); }
+
+  function applySettingsToUI() {
+    settingInputs().forEach(function (el) {
+      const key = el.dataset.setting;
+      if (!(key in state.settings)) return;
+      const value = state.settings[key];
+      if (el.type === "checkbox") el.checked = !!value;
+      else el.value = value === null || value === undefined ? "" : String(value);
+    });
+    applyTheme(state.settings.theme || "system");
+    syncConditionalFields();
+    updateNamePreview();
+  }
+
+  function readSettingsFromUI() {
+    const out = {};
+    settingInputs().forEach(function (el) {
+      const key = el.dataset.setting;
+      if (el.type === "checkbox") out[key] = el.checked;
+      else if (el.type === "number") out[key] = el.value === "" ? 0 : Number(el.value);
+      else out[key] = el.value;
+    });
+    out.theme = state.settings.theme;
+    out.noticeAccepted = state.settings.noticeAccepted;
+    return out;
+  }
+
+  const saveSettings = debounce(function () {
+    const payload = readSettingsFromUI();
+    api("/api/settings", { method: "POST", body: { settings: payload } })
+      .then(function (res) { state.settings = res.settings; })
+      .catch(function (err) { toast("Could not save settings: " + err.message, "err"); });
+  }, 350);
+
+  function syncConditionalFields() {
+    const mode = $("#s-mode").value;
+    $$("[data-when-mode]").forEach(function (el) { el.hidden = el.dataset.whenMode !== mode; });
+    $("#wrap-customFolder").hidden = $("#s-folderMode").value !== "custom";
+    $("#wrap-cookieFile").hidden = $("#s-cookiesFrom").value !== "file";
+
+    const hasFfmpeg = !!(state.health && state.health.ffmpeg);
+    $("#ffmpeg-warning").hidden = hasFfmpeg;
+    ["s-audioFormat", "s-audioQuality", "s-embedMetadata", "s-embedThumbnail",
+     "s-parseArtistFromTitle", "s-skipNonMusic", "s-writeSubtitles", "s-videoContainer"].forEach(function (id) {
+      const el = $("#" + id);
+      if (el) el.disabled = !hasFfmpeg;
+    });
+    const parser = $("#s-parseArtistFromTitle");
+    if (parser && state.health && !state.health.metadataParser) parser.disabled = true;
+
+    // yt-dlp needs mutagen to put cover art into opus/flac/ogg, and fails the
+    // whole track rather than skipping when it is missing.
+    const needsMutagen = ["opus", "flac", "vorbis"].indexOf($("#s-audioFormat").value) >= 0;
+    const missing = state.health && state.health.mutagen === false;
+    const warn = $("#mutagen-warning");
+    if (warn) {
+      const blocked = mode === "audio" && needsMutagen && missing && $("#s-embedThumbnail").checked;
+      warn.hidden = !blocked;
+      warn.textContent = blocked
+        ? "Cover art cannot be embedded into " + $("#s-audioFormat").value +
+          " without mutagen, so it will be skipped. Install it with: pip install \"yt-dlp[default]\""
+        : "";
+    }
+  }
+
+  function extensionForSettings() {
+    if ($("#s-mode").value === "video") return $("#s-videoContainer").value || "mp4";
+    const fmt = $("#s-audioFormat").value;
+    if (fmt === "best") return "m4a";
+    if (fmt === "vorbis") return "ogg";
+    return fmt;
+  }
+
+  const SAMPLE = { title: "Midnight Drive", artist: "Neon Harbor", uploader: "Neon Harbor", album: "Coastlines", index: 3 };
+
+  function updateNamePreview() {
+    const sep = (state.health && state.health.platform === "win32") ? "\\" : "/";
+    const base = ($("#s-outputDir").value || "…").replace(/[\\/]+$/, "");
+    let folder = "";
+    const mode = $("#s-folderMode").value;
+    if (mode === "playlist") folder = sep + (state.resolved && state.resolved.title ? sanitizeSample(state.resolved.title) : "Playlist name");
+    else if (mode === "artist") folder = sep + sanitizeSample(SAMPLE.artist);
+    else if (mode === "custom") folder = sep + (sanitizeSample($("#s-customFolder").value) || "Folder name");
+
+    let name = $("#s-fileTemplate").value || "%(title)s.%(ext)s";
+    if (name.indexOf("%(ext)s") === -1) name += ".%(ext)s";
+    name = name
+      .replace(/%\(title\)s/g, SAMPLE.title)
+      .replace(/%\(track\)s/g, SAMPLE.title)
+      .replace(/%\(artist\)s/g, SAMPLE.artist)
+      .replace(/%\(creator\)s/g, SAMPLE.artist)
+      .replace(/%\(uploader\)s/g, SAMPLE.uploader)
+      .replace(/%\(channel\)s/g, SAMPLE.uploader)
+      .replace(/%\(album\)s/g, SAMPLE.album)
+      .replace(/%\(playlist_index\)0?\d*d/g, "03")
+      .replace(/%\(playlist(_title)?\)s/g, state.resolved ? state.resolved.title : "Playlist name")
+      .replace(/%\(ext\)s/g, extensionForSettings())
+      .replace(/%\([a-z_]+\)0?\d*[sd]/g, "…");
+    const prefix = $("#s-numberTracks").checked ? "03 - " : "";
+    $("#name-preview").textContent = base + folder + sep + prefix + name;
+  }
+
+  function sanitizeSample(text) {
+    return String(text || "").replace(/[\\/:*?"<>|]/g, "_").trim().slice(0, 60);
+  }
+
+  const checkPath = debounce(function () {
+    api("/api/path/check", { method: "POST", body: { path: $("#s-outputDir").value } })
+      .then(function (info) {
+        const host = $("#pathstat");
+        host.innerHTML = "";
+        const pill = document.createElement("span");
+        if (info.error) {
+          pill.className = "pill pill--err";
+          pill.textContent = info.error;
+        } else {
+          pill.className = "pill " + (info.exists ? "pill--ok" : "");
+          pill.textContent = (info.exists ? "Folder ready" : "Will be created") +
+            (info.free ? " · " + fmtBytes(info.free) + " free" : "");
+        }
+        host.appendChild(pill);
+      })
+      .catch(function () { $("#pathstat").innerHTML = ""; });
+  }, 450);
+
+  function onSettingChanged(event) {
+    const el = event.target;
+    if (!el.dataset || !el.dataset.setting) return;
+    syncConditionalFields();
+    updateNamePreview();
+    if (el.dataset.setting === "outputDir") checkPath();
+    if (el.dataset.setting === "jsRuntime") renderJsPill();
+    if (el.dataset.setting === "ffmpegLocation") refreshHealthAfterSave();
+    if (el.dataset.setting === "showThumbnails") scheduleRender();
+    saveSettings();
+  }
+
+  document.addEventListener("change", onSettingChanged);
+  document.addEventListener("input", function (event) {
+    const el = event.target;
+    if (!el.dataset || !el.dataset.setting) return;
+    if (el.type === "checkbox" || el.tagName === "SELECT") return; // handled by change
+    onSettingChanged(event);
+  });
+
+  /* ------------------------------------------------------------------ *
+   * resolving a link
+   * ------------------------------------------------------------------ */
+
+  const form   = $("#form-source");
+  const urlBox = $("#url");
+  const btnLoad = $("#btn-load");
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    // clearJob() nulls state.jobId, after which Stop can no longer reach the
+    // running job - it would keep writing files with nothing left to cancel it.
+    if (state.jobRunning && !window.confirm(
+        "A download is still running. Loading a new link will leave it running with no way to stop it. Continue?")) {
+      return;
+    }
+    resolve();
+  });
+
+  $$(".chip[data-example]").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      urlBox.value = chip.dataset.example;
+      urlBox.focus();
+      urlBox.setSelectionRange(urlBox.value.length, urlBox.value.length);
+    });
+  });
+
+  function resolve() {
+    const value = urlBox.value.trim();
+    if (!value) { urlBox.focus(); return; }
+    btnLoad.disabled = true;
+    btnLoad.innerHTML = icon("i-search", "spin") + "<span>Loading…</span>";
+    api("/api/resolve", { method: "POST", body: { url: value, settings: readSettingsFromUI() } })
+      .then(function (data) {
+        state.resolved = data;
+        state.tracks = data.tracks || [];
+        state.uidOf = new Map();
+        state.tracks.forEach(function (track, i) {
+          track.uid = i + ":" + (track.id || ("idx" + (i + 1)));
+          state.uidOf.set(track.uid, track);
+        });
+        state.selected = new Set(state.tracks.filter(function (t) { return t.available; })
+                                             .map(function (t) { return t.uid; }));
+        state.itemState = new Map();
+        state.cursor = state.tracks.length ? 0 : -1;
+        clearJob();
+        renderPlaylistHeader();
+        rebuildView();
+        $("#panel-empty").hidden = true;
+        $("#panel-playlist").hidden = false;
+        $("#actionbar").hidden = false;
+        updateNamePreview();
+        if (data.truncated) toast("This list is very large — only the first " + state.tracks.length + " tracks were loaded.", "info", 8000);
+        (data.warnings || []).slice(0, 3).forEach(function (w) { pushLog({ level: "warning", message: w, t: Date.now() / 1000 }); });
+        if (!state.tracks.length) toast("No playable tracks were found at that link.", "err");
+      })
+      .catch(function (err) { toast(err.message, "err"); })
+      .then(function () {
+        btnLoad.disabled = false;
+        btnLoad.innerHTML = icon("i-search") + "<span>Load</span>";
+      });
+  }
+
+  function renderPlaylistHeader() {
+    const data = state.resolved;
+    const art = $("#pl-art");
+    art.hidden = true;
+    if (data.thumbnail && state.settings.showThumbnails) {
+      art.onload = function () { art.hidden = false; };
+      art.onerror = function () { art.hidden = true; };
+      art.src = data.thumbnail;
+    } else {
+      art.removeAttribute("src");
+    }
+    $("#pl-title").textContent = data.title || "Untitled";
+    $("#pl-title").title = data.title || "";
+    const facts = $("#pl-facts");
+    facts.innerHTML = "";
+    const bits = [];
+    if (data.uploader) bits.push(data.uploader);
+    bits.push(data.count + (data.count === 1 ? " track" : " tracks"));
+    if (data.totalDuration) bits.push(fmtLongDuration(data.totalDuration));
+    bits.push(data.kind === "playlist" ? "playlist" : "single video");
+    bits.forEach(function (text) {
+      const span = document.createElement("span");
+      span.textContent = text;
+      facts.appendChild(span);
+    });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * filtering, sorting, selection
+   * ------------------------------------------------------------------ */
+
+  const filterBox = $("#filter");
+  const sortBox = $("#sort");
+
+  filterBox.addEventListener("input", debounce(rebuildView, 120));
+  sortBox.addEventListener("change", rebuildView);
+
+  function rebuildView() {
+    const needle = filterBox.value.trim().toLowerCase();
+    let view = state.tracks;
+    if (needle) {
+      view = view.filter(function (t) {
+        return (t.title || "").toLowerCase().indexOf(needle) >= 0 ||
+               (t.uploader || "").toLowerCase().indexOf(needle) >= 0;
+      });
+    }
+    const order = sortBox.value;
+    if (order !== "original") {
+      view = view.slice().sort(function (a, b) {
+        if (order === "title") return (a.title || "").localeCompare(b.title || "");
+        if (order === "artist") return (a.uploader || "").localeCompare(b.uploader || "") ||
+                                       (a.title || "").localeCompare(b.title || "");
+        return (b.duration || 0) - (a.duration || 0);
+      });
+    }
+    state.view = view;
+    if (state.cursor >= view.length) state.cursor = view.length - 1;
+    $("#sizer").style.height = (view.length * ROW_H) + "px";
+    scheduleRender();
+    updateSelectionUi();
+  }
+
+  function selectedTracks() {
+    return state.tracks.filter(function (t) { return state.selected.has(t.uid); });
+  }
+
+  function updateSelectionUi() {
+    const count = state.selected.size;
+    $("#sel-count").textContent = count + " selected";
+    const label = $("#btn-start-label");
+    label.textContent = count ? "Download " + count + (count === 1 ? " track" : " tracks") : "Download";
+    $("#btn-start").disabled = state.jobRunning || count === 0;
+  }
+
+  $("#sel-all").addEventListener("click", function () {
+    state.view.forEach(function (t) { if (t.available) state.selected.add(t.uid); });
+    scheduleRender(); updateSelectionUi();
+  });
+  $("#sel-none").addEventListener("click", function () {
+    state.view.forEach(function (t) { state.selected.delete(t.uid); });
+    scheduleRender(); updateSelectionUi();
+  });
+  $("#sel-invert").addEventListener("click", function () {
+    state.view.forEach(function (t) {
+      if (!t.available) return;
+      if (state.selected.has(t.uid)) state.selected.delete(t.uid); else state.selected.add(t.uid);
+    });
+    scheduleRender(); updateSelectionUi();
+  });
+
+  let lastToggled = -1;
+
+  function toggleAt(index, extendRange) {
+    const track = state.view[index];
+    if (!track || !track.available) return;
+    const shouldSelect = !state.selected.has(track.uid);
+    if (extendRange && lastToggled >= 0) {
+      const from = Math.min(lastToggled, index), to = Math.max(lastToggled, index);
+      for (let i = from; i <= to; i++) {
+        const t = state.view[i];
+        if (!t || !t.available) continue;
+        if (shouldSelect) state.selected.add(t.uid); else state.selected.delete(t.uid);
+      }
+    } else if (shouldSelect) {
+      state.selected.add(track.uid);
+    } else {
+      state.selected.delete(track.uid);
+    }
+    lastToggled = index;
+    state.cursor = index;
+    scheduleRender();
+    updateSelectionUi();
+  }
+
+  /* ------------------------------------------------------------------ *
+   * virtualised track list
+   * ------------------------------------------------------------------ */
+
+  const listEl = $("#tracklist");
+  const sizerEl = $("#sizer");
+  const pool = [];
+
+  listEl.addEventListener("scroll", scheduleRender, { passive: true });
+  window.addEventListener("resize", scheduleRender);
+
+  function scheduleRender() {
+    if (state.frame) return;
+    state.frame = requestAnimationFrame(function () {
+      state.frame = 0;
+      renderRows();
+    });
+  }
+
+  function makeRow() {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.setAttribute("role", "option");
+    row.id = "ytmd-opt" + pool.length;   // referenced by aria-activedescendant
+    row.innerHTML =
+      '<input class="row__check" type="checkbox" tabindex="-1" aria-hidden="true">' +
+      '<span class="row__idx"></span>' +
+      '<img class="row__art" alt="" decoding="async" width="46" height="34" style="visibility:hidden">' +
+      '<div class="row__body"><div class="row__title truncate"></div><div class="row__sub truncate"></div></div>' +
+      '<span class="row__dur"></span>' +
+      '<div class="row__state"></div>' +
+      '<div class="row__bar" style="width:0"></div>';
+    const artEl = row.children[2];
+    artEl.addEventListener("load", function () { artEl.style.visibility = "visible"; });
+    artEl.addEventListener("error", function () { artEl.style.visibility = "hidden"; });
+    row.addEventListener("click", function (event) {
+      const index = Number(row.dataset.index);
+      if (isNaN(index)) return;
+      toggleAt(index, event.shiftKey);
+      if (event.shiftKey) window.getSelection().removeAllRanges();
+    });
+    row.addEventListener("dblclick", function () {
+      const track = state.view[Number(row.dataset.index)];
+      if (track && track.url) window.open(track.url, "_blank", "noopener");
+    });
+    listEl.appendChild(row);
+    return row;
+  }
+
+  const STATE_LABEL = {
+    queued: ["Queued", ""],
+    downloading: ["Downloading", "pill--accent"],
+    processing: ["Processing", "pill--accent"],
+    done: ["Saved", "pill--ok"],
+    skipped: ["Skipped", ""],
+    error: ["Failed", "pill--err"],
+    cancelled: ["Stopped", "pill--warn"],
+  };
+
+  function renderRows() {
+    const view = state.view;
+    sizerEl.style.height = (view.length * ROW_H) + "px";
+
+    if (!view.length) {
+      pool.forEach(function (row) { row.hidden = true; });
+      return;
+    }
+
+    const scrollTop = listEl.scrollTop;
+    const visible = listEl.clientHeight || 400;
+    const start = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+    const end = Math.min(view.length, Math.ceil((scrollTop + visible) / ROW_H) + OVERSCAN);
+    const needed = end - start;
+
+    while (pool.length < needed) pool.push(makeRow());
+
+    const showArt = !!(state.settings && state.settings.showThumbnails);
+    let cursorRowId = "";
+
+    for (let i = 0; i < pool.length; i++) {
+      const row = pool[i];
+      const index = start + i;
+      if (i >= needed || index >= view.length) { row.hidden = true; continue; }
+      row.hidden = false;
+      const track = view[index];
+      const live = state.itemState.get(track.uid);
+      row.dataset.index = String(index);
+      row.style.top = (index * ROW_H) + "px";
+
+      const selected = state.selected.has(track.uid);
+      row.classList.toggle("row--selected", selected);
+      row.classList.toggle("row--unavailable", !track.available);
+      row.setAttribute("aria-selected", selected ? "true" : "false");
+      row.classList.toggle("row--cursor", index === state.cursor);
+      row.setAttribute("aria-posinset", String(index + 1));
+      row.setAttribute("aria-setsize", String(view.length));
+      if (index === state.cursor) cursorRowId = row.id;
+
+      const check = row.children[0];
+      check.checked = selected;
+      check.disabled = !track.available;
+
+      row.children[1].textContent = track.index || (index + 1);
+
+      const art = row.children[2];
+      if (!showArt) {
+        art.style.display = "none";        // reclaim the slot for every row at once
+        art.removeAttribute("src");
+      } else {
+        art.style.display = "";
+        if (track.thumbnail) {
+          if (art.getAttribute("src") !== track.thumbnail) {
+            art.style.visibility = "hidden";   // keeps the slot, hides it until it loads
+            art.setAttribute("src", track.thumbnail);
+          }
+        } else {
+          art.removeAttribute("src");
+          art.style.visibility = "hidden";
+        }
+      }
+
+      const body = row.children[3];
+      body.children[0].textContent = track.title;
+      body.children[0].title = track.title;
+      const sub = [];
+      if (track.uploader) sub.push(track.uploader);
+      if (live && live.stage) sub.push(live.stage);
+      if (live && live.state === "error" && live.message) sub.push(live.message);
+      if (live && live.state === "done" && live.message) sub.push(live.message);
+      body.children[1].textContent = sub.join(" · ");
+      body.children[1].title = body.children[1].textContent;
+
+      row.children[4].textContent = track.available ? fmtDuration(track.duration) : "unavailable";
+
+      const cell = row.children[5];
+      cell.innerHTML = "";
+      if (live) {
+        const meta = STATE_LABEL[live.state] || [live.state, ""];
+        if (live.state === "downloading" || live.state === "processing") {
+          const readout = document.createElement("span");
+          readout.className = "row__pct";
+          readout.textContent = Math.round((live.progress || 0) * 100) + "%" +
+            (live.speed ? " · " + fmtBytes(live.speed) + "/s" : "");
+          cell.appendChild(readout);
+        }
+        const pill = document.createElement("span");
+        pill.className = "pill " + meta[1];
+        pill.textContent = meta[0];
+        if (live.message) pill.title = live.message;
+        cell.appendChild(pill);
+      }
+
+      const bar = row.children[6];
+      const active = live && (live.state === "downloading" || live.state === "processing");
+      bar.style.width = active ? ((live.progress || 0) * 100) + "%" : "0%";
+      bar.style.opacity = active ? "1" : "0";
+    }
+
+    // Must be cleared when the cursor row is scrolled out of the window,
+    // otherwise the reference dangles at a recycled row.
+    listEl.setAttribute("aria-activedescendant", cursorRowId);
+  }
+
+  /* keyboard navigation over the virtual list */
+  listEl.addEventListener("keydown", function (event) {
+    const view = state.view;
+    if (!view.length) return;
+    let next = state.cursor;
+    if (event.key === "ArrowDown") next = Math.min(view.length - 1, state.cursor + 1);
+    else if (event.key === "ArrowUp") next = Math.max(0, state.cursor - 1);
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = view.length - 1;
+    else if (event.key === "PageDown") next = Math.min(view.length - 1, state.cursor + Math.floor(listEl.clientHeight / ROW_H));
+    else if (event.key === "PageUp") next = Math.max(0, state.cursor - Math.floor(listEl.clientHeight / ROW_H));
+    else if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      toggleAt(state.cursor, event.shiftKey);
+      return;
+    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      $("#sel-all").click();
+      return;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    state.cursor = next;
+    if (event.shiftKey && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      const track = view[next];
+      if (track && track.available) state.selected.add(track.uid);
+      updateSelectionUi();
+    }
+    const top = next * ROW_H, bottom = top + ROW_H;
+    if (top < listEl.scrollTop) listEl.scrollTop = top;
+    else if (bottom > listEl.scrollTop + listEl.clientHeight) listEl.scrollTop = bottom - listEl.clientHeight;
+    scheduleRender();
+  });
+
+  /* ------------------------------------------------------------------ *
+   * download jobs
+   * ------------------------------------------------------------------ */
+
+  const btnStart  = $("#btn-start");
+  const btnCancel = $("#btn-cancel");
+  const btnReveal = $("#btn-reveal");
+  const progressEl = $("#progress");
+  const progressFill = $("#progress-fill");
+  const statsEl = $("#stats");
+
+  let finished = "";   // the last job state we announced
+
+  const btnRetry = document.createElement("button");
+  btnRetry.className = "btn";
+  btnRetry.type = "button";
+  btnRetry.hidden = true;
+  btnRetry.innerHTML = icon("i-download") + '<span class="btn-label-optional">Retry failed</span>';
+  btnCancel.insertAdjacentElement("afterend", btnRetry);
+
+  function clearJob() {
+    if (state.abort) { try { state.abort.abort(); } catch (e) {} state.abort = null; }
+    if (state.poll) { clearInterval(state.poll); state.poll = null; }
+    state.jobId = null;
+    state.jobRunning = false;
+    finished = "";
+    state.itemState = new Map();
+    state.logSeq = 0;
+    $("#log").innerHTML = "";
+    btnCancel.hidden = true;
+    btnRetry.hidden = true;
+    progressEl.classList.remove("progress--done");
+    progressFill.style.width = "0%";
+    statsEl.innerHTML = "<span>Ready</span>";
+    updateSelectionUi();
+  }
+
+  btnStart.addEventListener("click", function () {
+    const tracks = selectedTracks();
+    if (!tracks.length) { toast("Pick at least one track first.", "err"); return; }
+    startJob(tracks);
+  });
+
+  btnRetry.addEventListener("click", function () {
+    const failed = [];
+    state.itemState.forEach(function (live, uid) {
+      if (live.state === "error" || live.state === "cancelled") {
+        const track = state.uidOf.get(uid);
+        if (track) failed.push(track);
+      }
+    });
+    if (!failed.length) return;
+    startJob(failed);
+  });
+
+  function startJob(tracks) {
+    btnStart.disabled = true;
+    btnRetry.hidden = true;
+    const payload = {
+      tracks: tracks.map(function (t) {
+        // uid must travel with the track: the server only sees the selection,
+        // so it cannot re-derive the same key from a position.
+        return { uid: t.uid, id: t.id, title: t.title, uploader: t.uploader,
+                 url: t.url, index: t.index, thumbnail: t.thumbnail };
+      }),
+      settings: readSettingsFromUI(),
+      playlistTitle: (state.resolved && state.resolved.title) || "",
+    };
+    api("/api/jobs", { method: "POST", body: payload })
+      .then(function (res) {
+        state.jobId = res.jobId;
+        state.jobRunning = true;
+        finished = "";
+        state.jobStarted = Date.now();
+        state.logSeq = 0;
+        $("#log").innerHTML = "";
+        btnCancel.hidden = false;
+        progressEl.classList.remove("progress--done");
+        applySnapshot(res.job);
+        streamJob(res.jobId);
+      })
+      .catch(function (err) {
+        btnStart.disabled = false;
+        toast(err.message, "err");
+      });
+  }
+
+  btnCancel.addEventListener("click", function () {
+    if (!state.jobId) return;
+    btnCancel.disabled = true;
+    api("/api/jobs/" + state.jobId + "/cancel", { method: "POST" })
+      .catch(function (err) { toast(err.message, "err"); })
+      .then(function () { btnCancel.disabled = false; });
+  });
+
+  btnReveal.addEventListener("click", function () {
+    api("/api/reveal", { method: "POST", body: { path: $("#s-outputDir").value } })
+      .then(function (res) { if (!res.ok) toast(res.error || "Could not open that folder.", "err"); })
+      .catch(function (err) { toast(err.message, "err"); });
+  });
+
+  /* --- server-sent events, with a polling fallback --------------------- */
+
+  function streamJob(jobId) {
+    state.abort = new AbortController();
+    fetch("/api/jobs/" + jobId + "/events", {
+      headers: { "X-Ytmd-Token": TOKEN },
+      cache: "no-store",
+      credentials: "omit",
+      signal: state.abort.signal,
+    }).then(function (res) {
+      if (!res.ok || !res.body || !res.body.getReader) throw new Error("no stream");
+      return pump(res.body.getReader(), jobId);
+    }).catch(function (err) {
+      if (err && err.name === "AbortError") return;
+      pollJob(jobId);
+    });
+  }
+
+  function pump(reader, jobId) {
+    const decoder = new TextDecoder();
+    let buffer = "";
+    function step() {
+      return reader.read().then(function (chunk) {
+        if (chunk.done) {
+          // The stream closed; take one final snapshot so nothing is missed.
+          return api("/api/jobs/" + jobId).then(applySnapshot).catch(function () {});
+        }
+        buffer += decoder.decode(chunk.value, { stream: true });
+        let split;
+        while ((split = buffer.indexOf("\n\n")) >= 0) {
+          const frame = buffer.slice(0, split);
+          buffer = buffer.slice(split + 2);
+          const data = frame.split("\n")
+            .filter(function (line) { return line.indexOf("data:") === 0; })
+            .map(function (line) { return line.slice(5).replace(/^ /, ""); })
+            .join("\n");
+          if (!data) continue;
+          try { handleEvent(JSON.parse(data)); } catch (e) { /* ignore malformed frame */ }
+        }
+        return step();
+      });
+    }
+    return step();
+  }
+
+  function pollJob(jobId) {
+    if (state.poll) clearInterval(state.poll);
+    state.poll = setInterval(function () {
+      api("/api/jobs/" + jobId).then(function (snapshot) {
+        applySnapshot(snapshot);
+        if (snapshot.state !== "running") { clearInterval(state.poll); state.poll = null; }
+      }).catch(function () { clearInterval(state.poll); state.poll = null; });
+    }, 1200);
+  }
+
+  function handleEvent(event) {
+    if (!event || !event.type) return;
+    if (event.type === "snapshot") { applySnapshot(event); return; }
+    if (event.type === "item") {
+      state.itemState.set(event.item.uid, event.item);
+      scheduleRender();
+      updateJobUi(event.counts);
+      return;
+    }
+    if (event.type === "log") { pushLog(event); return; }
+    if (event.type === "job") {
+      if (event.job && event.job.state) finishJob(event.job.state);
+      updateJobUi(event.counts);
+      return;
+    }
+    if (event.type === "end") {
+      if (state.abort) { try { state.abort.abort(); } catch (e) {} state.abort = null; }
+      if (state.jobRunning) finishJob("completed");
+    }
+  }
+
+  function applySnapshot(snapshot) {
+    if (!snapshot || !snapshot.items) return;
+    snapshot.items.forEach(function (item) { state.itemState.set(item.uid, item); });
+    (snapshot.log || []).forEach(pushLog);
+    state.jobRunning = snapshot.state === "running";
+    btnCancel.hidden = !state.jobRunning;
+    scheduleRender();
+    updateJobUi(snapshot.counts);
+    if (!state.jobRunning && snapshot.state) finishJob(snapshot.state);
+  }
+
+  function finishJob(jobState) {
+    if (!state.jobRunning && finished === jobState) return;
+    finished = jobState;
+    state.jobRunning = false;
+    btnCancel.hidden = true;
+    btnStart.disabled = state.selected.size === 0;
+    if (state.poll) { clearInterval(state.poll); state.poll = null; }
+
+    let failed = 0, saved = 0;
+    state.itemState.forEach(function (live) {
+      if (live.state === "error" || live.state === "cancelled") failed++;
+      if (live.state === "done") saved++;
+    });
+    btnRetry.hidden = failed === 0;
+    if (failed) {
+      const text = "Retry " + failed + " failed";
+      btnRetry.querySelector("span").textContent = text;
+      btnRetry.title = text;                       // the label is hidden on narrow screens
+      btnRetry.setAttribute("aria-label", text);
+    }
+    progressEl.classList.toggle("progress--done", failed === 0);
+
+    if (jobState === "cancelled") toast("Stopped. " + saved + " track(s) were saved.", "info");
+    else if (failed) toast(saved + " saved, " + failed + " failed — see the log for details.", "err", 9000);
+    else if (saved) toast(saved + " track(s) saved.", "ok");
+    updateSelectionUi();
+  }
+
+  function updateJobUi(counts) {
+    const items = [];
+    state.itemState.forEach(function (live) { items.push(live); });
+    if (!items.length) { statsEl.innerHTML = "<span>Ready</span>"; return; }
+
+    let progressSum = 0, speed = 0, bytes = 0, done = 0, failed = 0, skipped = 0, active = 0;
+    items.forEach(function (live) {
+      if (live.state === "done") { progressSum += 1; done++; }
+      else if (live.state === "skipped") { progressSum += 1; skipped++; }
+      else if (live.state === "error" || live.state === "cancelled") { progressSum += 1; failed++; }
+      else progressSum += live.progress || 0;
+      if (live.state === "downloading" || live.state === "processing") active++;
+      speed += live.speed || 0;
+      bytes += live.downloaded || 0;
+    });
+
+    const fraction = progressSum / items.length;
+    progressFill.style.width = (fraction * 100).toFixed(1) + "%";
+    progressEl.setAttribute("aria-valuenow", Math.round(fraction * 100));
+
+    const parts = [];
+    parts.push("<span><strong>" + done + "</strong> of " + items.length + " saved</span>");
+    if (active) parts.push("<span>" + active + " in flight</span>");
+    if (skipped) parts.push("<span>" + skipped + " skipped</span>");
+    if (failed) parts.push('<span style="color:var(--err)">' + failed + " failed</span>");
+    if (bytes) parts.push("<span>" + fmtBytes(bytes) + "</span>");
+    if (speed) parts.push("<span>" + fmtBytes(speed) + "/s</span>");
+    if (state.jobRunning && fraction > 0.01 && fraction < 1) {
+      const elapsed = (Date.now() - state.jobStarted) / 1000;
+      parts.push("<span>" + fmtEta(elapsed * (1 - fraction) / fraction) + "</span>");
+    }
+    statsEl.innerHTML = parts.join("");
+  }
+
+  /* ------------------------------------------------------------------ *
+   * log drawer
+   * ------------------------------------------------------------------ */
+
+  const logEl = $("#log");
+  const logToggle = $("#btn-log-toggle");
+
+  logToggle.addEventListener("click", function () {
+    const showing = logEl.hidden;
+    logEl.hidden = !showing;
+    logToggle.textContent = showing ? "Hide log" : "Show log";
+    logToggle.setAttribute("aria-expanded", showing ? "true" : "false");
+    if (showing) logEl.scrollTop = logEl.scrollHeight;
+  });
+
+  $("#btn-log-copy").addEventListener("click", function () {
+    const text = logEl.textContent || "";
+    if (!text.trim()) { toast("The log is empty.", "info"); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { toast("Log copied.", "ok"); },
+        function () { toast("Could not access the clipboard.", "err"); }
+      );
+    } else {
+      toast("Clipboard is unavailable in this browser.", "err");
+    }
+  });
+
+  function pushLog(entry) {
+    if (!entry || !entry.message) return;
+    if (entry.seq) {
+      if (entry.seq <= state.logSeq) return;
+      state.logSeq = entry.seq;
+    }
+    const line = document.createElement("div");
+    line.className = "log__line log__line--" + (entry.level || "info");
+    const stamp = document.createElement("span");
+    stamp.className = "log__t";
+    stamp.textContent = new Date((entry.t || Date.now() / 1000) * 1000).toLocaleTimeString();
+    const body = document.createElement("span");
+    body.textContent = entry.message;
+    line.appendChild(stamp);
+    line.appendChild(body);
+    const atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 24;
+    logEl.appendChild(line);
+    while (logEl.children.length > 600) logEl.removeChild(logEl.firstChild);
+    if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+    if ((entry.level === "error" || entry.level === "warning") && logEl.hidden) {
+      logToggle.classList.add("btn--danger");
+    }
+  }
+
+  /* ------------------------------------------------------------------ *
+   * chrome: options sheet, notice, quit, shortcuts
+   * ------------------------------------------------------------------ */
+
+  const sheet = $("#col-side");
+  const btnOptions = $("#btn-options");
+  btnOptions.setAttribute("aria-expanded", "false");
+
+  function openSheet() {
+    sheet.dataset.open = "true";
+    btnOptions.setAttribute("aria-expanded", "true");
+    $("#btn-options-close").focus();
+  }
+  function closeSheet() {
+    if (sheet.dataset.open !== "true") return;
+    sheet.dataset.open = "false";
+    btnOptions.setAttribute("aria-expanded", "false");
+    btnOptions.focus();   // never strand focus behind the scrim
+  }
+  btnOptions.addEventListener("click", openSheet);
+  $("#btn-options-close").addEventListener("click", closeSheet);
+  sheet.addEventListener("click", function (event) { if (event.target === sheet) closeSheet(); });
+
+  $("#btn-notice-ok").addEventListener("click", function () {
+    $("#notice").hidden = true;
+    state.settings.noticeAccepted = true;
+    saveSettings();
+  });
+
+  $("#btn-quit").addEventListener("click", function () {
+    if (state.jobRunning && !window.confirm("A download is still running. Stop the service anyway?")) return;
+    if (!state.jobRunning && !window.confirm("Stop the local ytmd service? The page will stop working until you run it again.")) return;
+    api("/api/quit", { method: "POST" }).catch(function () {});
+    setTimeout(function () {
+      document.body.innerHTML =
+        '<div style="display:grid;place-items:center;height:100vh;text-align:center;font-family:system-ui;gap:8px">' +
+        '<div><h1 style="font-size:18px;margin-bottom:6px">Service stopped</h1>' +
+        '<p style="color:#888;font-size:13px">Run <code>python3 ytmd.py</code> again to come back.</p></div></div>';
+    }, 300);
+  });
+
+  document.addEventListener("keydown", function (event) {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
+    if (event.key === "Escape") {
+      if (sheet.dataset.open === "true") { closeSheet(); return; }
+      if (document.activeElement === filterBox) { filterBox.value = ""; rebuildView(); filterBox.blur(); }
+      return;
+    }
+    if (typing) return;
+    if (event.key === "/") { event.preventDefault(); filterBox.focus(); filterBox.select(); }
+    else if (event.key === "l" || event.key === "L") { urlBox.focus(); urlBox.select(); event.preventDefault(); }
+    else if ((event.key === "d" || event.key === "D") && !btnStart.disabled) { btnStart.click(); event.preventDefault(); }
+  });
+
+  window.addEventListener("beforeunload", function (event) {
+    if (!state.jobRunning) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
+  /* ------------------------------------------------------------------ *
+   * boot
+   * ------------------------------------------------------------------ */
+
+  const JS_RUNTIME_PRIORITY = ["deno", "node", "quickjs", "bun"];  // matches ytmd.py
+
+  function chosenJsRuntime() {
+    const available = (state.health && state.health.jsRuntimes) || {};
+    const select = $("#s-jsRuntime");
+    const preference = select ? select.value : "auto";
+    if (preference !== "auto") return preference in available ? preference : "";
+    for (let i = 0; i < JS_RUNTIME_PRIORITY.length; i++) {
+      if (JS_RUNTIME_PRIORITY[i] in available) return JS_RUNTIME_PRIORITY[i];
+    }
+    return "";
+  }
+
+  function renderJsPill() {
+    const pill = $("#pill-js");
+    const available = (state.health && state.health.jsRuntimes) || {};
+    const names = Object.keys(available);
+    const chosen = chosenJsRuntime();
+    if (chosen) {
+      pill.textContent = "js: " + chosen;
+      pill.className = "pill pill--optional pill--ok";
+      pill.title = "yt-dlp will use " + chosen + " " + (available[chosen] || "") +
+        (names.length > 1 ? " (also found: " + names.filter(function (n) { return n !== chosen; }).join(", ") + ")" : "");
+      $("#js-hint").textContent = "Using " + chosen + " " + (available[chosen] || "") + ".";
+    } else if (names.length) {
+      pill.textContent = "js: not selected";
+      pill.className = "pill pill--optional pill--warn";
+      pill.title = "Found " + names.join(", ") + " but the current choice is unavailable.";
+      $("#js-hint").textContent = "Your chosen runtime was not found. Available here: " + names.join(", ") + ".";
+    } else {
+      pill.textContent = "no js runtime";
+      pill.className = "pill pill--optional pill--err";
+      pill.title = "yt-dlp needs a JavaScript runtime to read YouTube. Install Deno or Node.";
+      $("#js-hint").textContent = "None found. Install Deno (deno.com) or Node.js — without one, yt-dlp cannot read YouTube.";
+    }
+  }
+
+  function showFatal(message) {
+    document.body.innerHTML =
+      '<div style="display:grid;place-items:center;height:100vh;padding:24px;text-align:center;font-family:system-ui">' +
+      '<div style="max-width:52ch"><h1 style="font-size:18px;margin-bottom:8px">Cannot reach the local service</h1>' +
+      '<p style="color:#888;font-size:13px;line-height:1.5">' + message + "</p>" +
+      '<p style="color:#888;font-size:13px;margin-top:10px">Start it with <code>python3 ytmd.py</code> and open the URL it prints.</p></div></div>';
+  }
+
+  function refreshHealth() {
+    return api("/api/health").then(function (health) {
+      state.health = health;
+      renderJsPill();
+      syncConditionalFields();
+    }).catch(function () {});
+  }
+
+  // ffmpeg detection happens server-side, so the settings must land there first.
+  const refreshHealthAfterSave = debounce(function () {
+    api("/api/settings", { method: "POST", body: { settings: readSettingsFromUI() } })
+      .then(function (res) { state.settings = res.settings; })
+      .then(refreshHealth)
+      .catch(function () {});
+  }, 700);
+
+  Promise.all([api("/api/health"), api("/api/settings")])
+    .then(function (results) {
+      state.health = results[0];
+      state.settings = results[1].settings;
+
+      $("#foot-version").textContent = "v" + (state.health.version || VERSION);
+      const ytPill = $("#pill-ytdlp");
+      ytPill.innerHTML = '<span class="dot"></span>yt-dlp ' + state.health.ytdlp;
+      ytPill.className = "pill pill--optional pill--ok";
+      const ffPill = $("#pill-ffmpeg");
+      ffPill.textContent = state.health.ffmpeg ? "ffmpeg ready" : "ffmpeg missing";
+      ffPill.className = "pill pill--optional " + (state.health.ffmpeg ? "pill--ok" : "pill--warn");
+      ffPill.title = state.health.ffmpeg ? state.health.ffmpegDir : "Install ffmpeg for conversion, tags and cover art.";
+      renderJsPill();
+
+      applySettingsToUI();
+      checkPath();
+      $("#notice").hidden = !!state.settings.noticeAccepted;
+      if (!state.health.ffmpeg) {
+        toast("ffmpeg was not found — files will be saved as-is, without conversion or tags.", "info", 9000);
+      }
+      urlBox.focus();
+    })
+    .catch(function (err) {
+      showFatal(err.status === 401
+        ? "This page has an out-of-date session token. Reload it from the address the service printed."
+        : "The ytmd service did not answer: " + err.message);
+    });
+})();
+</script>
+</body>
+</html>
