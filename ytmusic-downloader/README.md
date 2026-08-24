@@ -251,7 +251,13 @@ file instead.
 per-track error text is in the log drawer; **Retry failed** re-queues just those.
 
 **Nothing downloads and the log is empty** — check that yt-dlp is current. Roughly every
-YouTube-side breakage is fixed in a yt-dlp release within days.
+YouTube-side breakage is fixed in a yt-dlp release within days, and upstream recommends
+tracking the nightly channel rather than stable when YouTube is actively breaking things.
+Nightlies are published to the same PyPI package as pre-releases:
+
+```bash
+pip install -U --pre "yt-dlp[default]"
+```
 
 **Port already in use** — `python3 ytmd.py --port 8899`.
 
