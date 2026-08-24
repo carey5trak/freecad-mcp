@@ -361,8 +361,7 @@ def test_serve_urls_trusts_an_explicit_bind_address() -> None:
     from youtube_downloader.webapp import serve_urls
 
     urls = serve_urls("192.168.1.5", 8765, "tok", addresses=["10.0.0.9"])
-    assert urls[-1] == ("On another device", "http://192.168.1.5:8765/?t=tok")
-    assert all("10.0.0.9" not in url for _, url in urls)
+    assert urls == [("Reachable at", "http://192.168.1.5:8765/?t=tok")]
 
 
 def test_serve_urls_brackets_ipv6() -> None:
@@ -387,3 +386,79 @@ def test_lan_addresses_never_returns_loopback() -> None:
     assert isinstance(addresses, list)
     assert all(not a.startswith("127.") for a in addresses)
     assert len(set(addresses)) == len(addresses)
+
+
+# -- regressions -------------------------------------------------------
+
+
+def test_files_with_non_latin1_names_are_served(server) -> None:
+    # yt-dlp rewrites characters illegal in filenames into fullwidth forms, so
+    # real downloads routinely carry names outside latin-1. The header encoder
+    # in http.server is latin-1 strict, so a naive Content-Disposition raises
+    # UnicodeEncodeError and the transfer dies before a byte is sent.
+    target = server.output_dir / "Ep 5： The End？ 日本語.mp4"
+    target.write_bytes(b"unicode payload")
+    server.fake.result = VIDEO_INFO | {"requested_downloads": [{"filepath": str(target)}]}
+
+    _, job, _ = request(
+        server.base, "/api/download", method="POST", body={"url": "https://youtu.be/abc123"}
+    )
+    assert wait_for_job(server.base, job["id"])["status"] == "done"
+
+    status, content, headers = request(
+        server.base, f"/api/files/{job['id']}/0?t={server.token}", token=None
+    )
+    assert status == 200
+    assert content == b"unicode payload"
+    # The name survives via RFC 5987 encoding, and a plain ASCII fallback is present.
+    disposition = headers["Content-Disposition"]
+    assert "filename*=UTF-8''" in disposition
+    assert "attachment" in disposition
+
+
+def test_serve_urls_offers_no_loopback_for_an_explicit_remote_bind() -> None:
+    # Binding to one address means loopback is NOT bound, so a 127.0.0.1 link
+    # is dead — and it is the link the auto-opened browser would follow.
+    from youtube_downloader.webapp import serve_urls
+
+    urls = serve_urls("192.168.1.5", 8765, "tok")
+    assert all("127.0.0.1" not in url for _, url in urls)
+    assert urls[0][1] == "http://192.168.1.5:8765/?t=tok"
+
+
+def test_content_disposition_keeps_a_plain_name_readable() -> None:
+    from youtube_downloader.webapp import content_disposition
+
+    value = content_disposition("Some Video.mp4")
+    assert 'filename="Some Video.mp4"' in value
+    assert value.startswith("attachment;")
+
+
+def test_content_disposition_encodes_names_outside_latin1() -> None:
+    from youtube_downloader.webapp import content_disposition
+
+    value = content_disposition("日本語 ： test.mp4")
+    value.encode("latin-1", "strict")  # must survive http.server's encoder
+    assert "filename*=UTF-8''" in value
+
+
+def test_content_disposition_cannot_inject_headers() -> None:
+    # A video title is chosen by whoever uploaded it, so a CR/LF in one must
+    # never reach the header, or it could forge additional response headers.
+    from youtube_downloader.webapp import content_disposition
+
+    value = content_disposition('evil"\r\nX-Injected: yes\r\n\r\n.mp4')
+    # The CR/LF are what make injection possible; without them the remaining
+    # text is inert content inside the quoted filename.
+    assert "\r" not in value and "\n" not in value
+    assert value.count("\n") == 0
+    assert value.splitlines() == [value]
+    value.encode("latin-1", "strict")
+
+
+def test_content_disposition_escapes_quotes_in_the_fallback() -> None:
+    from youtube_downloader.webapp import content_disposition
+
+    value = content_disposition('a "quoted" name.mp4')
+    fallback = value.split('filename="')[1].split('"')[0]
+    assert '"' not in fallback

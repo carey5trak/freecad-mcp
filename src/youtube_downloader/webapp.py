@@ -16,7 +16,9 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import re
 import secrets
+import shutil
 import socket
 import threading
 import uuid
@@ -25,7 +27,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Sequence
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from .downloader import Progress, YouTubeDownloader
 from .errors import YouTubeDownloaderError
@@ -245,6 +247,27 @@ class DownloadService:
             self.jobs.update(job, status="error", error="no video found at that URL")
 
 
+#: Anything outside printable ASCII cannot go in a header value unescaped.
+_HEADER_UNSAFE = re.compile(r"[^\x20-\x7e]")
+
+
+def content_disposition(name: str) -> str:
+    """Build a ``Content-Disposition`` header value for a downloaded file.
+
+    Two problems make the obvious version wrong. Video titles routinely
+    contain characters outside latin-1 — yt-dlp rewrites characters that are
+    illegal in filenames into fullwidth forms — and ``http.server`` encodes
+    headers as latin-1 strict, so those raise ``UnicodeEncodeError`` and kill
+    the response before any of the file is sent. Titles are also chosen by
+    whoever uploaded the video, so a newline in one must never reach a header.
+
+    ``filename*`` carries the real name per RFC 5987; the quoted ``filename``
+    is a sanitised ASCII fallback.
+    """
+    fallback = _HEADER_UNSAFE.sub("_", name).replace('"', "'").replace("\\", "_")
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
+
+
 def _read_index() -> bytes:
     return INDEX_FILE.read_bytes()
 
@@ -396,13 +419,25 @@ class _Handler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.NOT_FOUND, "file is no longer available")
             return
 
+        self._stream_file(path)
+
+    def _stream_file(self, path: Path) -> None:
+        """Send a file without holding it in memory.
+
+        Videos are routinely larger than it is reasonable to buffer, so the
+        body is copied in chunks straight to the socket.
+        """
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        self._send(
-            HTTPStatus.OK,
-            path.read_bytes(),
-            content_type,
-            {"Content-Disposition": f'attachment; filename="{path.name}"'},
-        )
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(path.stat().st_size))
+        self.send_header("Content-Disposition", content_disposition(path.name))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        if self.command == "HEAD":
+            return
+        with path.open("rb") as handle:
+            shutil.copyfileobj(handle, self.wfile, 256 * 1024)
 
 
 LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -452,13 +487,13 @@ def serve_urls(
 
     if host in LOOPBACK:
         return [("On this machine", url_for("127.0.0.1"))]
+    if host not in WILDCARD:
+        # Binding one address means loopback is NOT bound, so a 127.0.0.1 link
+        # would be dead — and it is the link the browser would be opened on.
+        return [("Reachable at", url_for(host))]
 
     pairs = [("On this machine", url_for("127.0.0.1"))]
-    reachable = list(addresses) if addresses is not None else lan_addresses()
-    if host not in WILDCARD:
-        # An explicit bind address is authoritative; do not guess past it.
-        reachable = [host]
-    for address in reachable:
+    for address in list(addresses) if addresses is not None else lan_addresses():
         pairs.append(("On another device", url_for(address)))
     return pairs
 

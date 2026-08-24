@@ -319,7 +319,13 @@
     if (!state.base) { return setConnected(false, "helper not configured"); }
     api("/api/jobs").then(function (data) {
       setConnected(true, "connected to " + state.base);
-      renderJobs(data.jobs);
+      var jobs = renderJobs(data.jobs);
+      // A download started before this page loaded is still running on the
+      // helper; without this its progress would sit frozen until the next
+      // manual action. Reloading the tab is common on phones.
+      if (jobs.some(function (j) { return j.status === "running" || j.status === "queued"; })) {
+        startPolling();
+      }
     }).catch(function (err) {
       setConnected(false, err.message.indexOf("token") >= 0 ? "invalid access token" : "helper not reachable");
     });
