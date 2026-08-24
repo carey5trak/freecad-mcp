@@ -936,6 +936,29 @@ class JobManager:
     # -- the worker ---------------------------------------------------------- #
 
     def _run(self, job: Job) -> None:
+        """Guarantee a terminal state: a job stuck on "running" hangs the page,
+        which sits waiting for an event stream that will never end."""
+        try:
+            self._run_job(job)
+        except BaseException:
+            job.add_log("error", "The download job stopped unexpectedly:\n" + traceback.format_exc(limit=4))
+            raise
+        finally:
+            if job.state == "running":
+                for item in job.items:
+                    if item.state not in TERMINAL_STATES:
+                        item.state = "error"
+                        item.message = item.message or "The job stopped before this track finished."
+                job.state = "error"
+                job.finished_at = time.time()
+                job.emit({
+                    "type": "job",
+                    "job": {"state": job.state, "finishedAt": job.finished_at},
+                    "counts": job.counts(),
+                })
+                job.emit({"type": "end"})
+
+    def _run_job(self, job: Job) -> None:
         settings = job.settings
         ffmpeg_dir = find_ffmpeg(settings.get("ffmpegLocation", ""))
         has_ffmpeg = ffmpeg_dir is not None

@@ -739,6 +739,36 @@ class TestJobLifecycle(HttpTestCase):
         self.fixture.request(f"/api/jobs/{body['jobId']}/cancel", "POST")
         self.fixture.stream_events(body["jobId"], deadline=15)
 
+    def test_a_crashing_job_still_reaches_a_terminal_state(self) -> None:
+        """A job stuck on "running" would hang the page on an endless stream."""
+        install_fake_ydl({"*": {"bytes": 1000}})
+        manager = self.fixture.state.jobs
+        original = manager._run_job
+
+        def explode(job: Any) -> None:
+            raise RuntimeError("simulated engine failure")
+
+        manager._run_job = explode  # type: ignore[assignment]
+        self.addCleanup(lambda: setattr(manager, "_run_job", original))
+
+        _, body = self.fixture.request("/api/jobs", "POST", {"tracks": self._tracks(2)})
+        events = self.fixture.stream_events(body["jobId"], deadline=10)
+        self.assertTrue(any(e.get("type") == "end" for e in events), "stream must terminate")
+        _, snapshot = self.fixture.request("/api/jobs/" + body["jobId"])
+        self.assertEqual(snapshot["state"], "error")
+        for item in snapshot["items"]:
+            self.assertIn(item["state"], {"error", "cancelled", "done", "skipped"})
+
+    def test_an_unwritable_output_folder_fails_cleanly(self) -> None:
+        install_fake_ydl({"*": {"bytes": 1000}})
+        self.fixture.request("/api/settings", "POST",
+                             {"settings": {"outputDir": "/proc/definitely/not/writable"}})
+        _, body = self.fixture.request("/api/jobs", "POST", {"tracks": self._tracks(1)})
+        events = self.fixture.stream_events(body["jobId"], deadline=10)
+        self.assertTrue(any(e.get("type") == "end" for e in events))
+        _, snapshot = self.fixture.request("/api/jobs/" + body["jobId"])
+        self.assertEqual(snapshot["state"], "error")
+
     def test_log_entries_have_increasing_sequence_numbers(self) -> None:
         install_fake_ydl({"*": {"bytes": 1000}})
         _, body = self.fixture.request("/api/jobs", "POST", {"tracks": self._tracks(1)})

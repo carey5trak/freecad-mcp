@@ -1464,6 +1464,8 @@ select.field { appearance: none; padding-right: 30px;
   const progressFill = $("#progress-fill");
   const statsEl = $("#stats");
 
+  let finished = "";   // the last job state we announced
+
   const btnRetry = document.createElement("button");
   btnRetry.className = "btn";
   btnRetry.type = "button";
@@ -1476,6 +1478,7 @@ select.field { appearance: none; padding-right: 30px;
     if (state.poll) { clearInterval(state.poll); state.poll = null; }
     state.jobId = null;
     state.jobRunning = false;
+    finished = "";
     state.itemState = new Map();
     state.logSeq = 0;
     $("#log").innerHTML = "";
@@ -1522,6 +1525,7 @@ select.field { appearance: none; padding-right: 30px;
       .then(function (res) {
         state.jobId = res.jobId;
         state.jobRunning = true;
+        finished = "";
         state.jobStarted = Date.now();
         state.logSeq = 0;
         $("#log").innerHTML = "";
@@ -1636,8 +1640,6 @@ select.field { appearance: none; padding-right: 30px;
     updateJobUi(snapshot.counts);
     if (!state.jobRunning && snapshot.state) finishJob(snapshot.state);
   }
-
-  let finished = "";
 
   function finishJob(jobState) {
     if (!state.jobRunning && finished === jobState) return;
