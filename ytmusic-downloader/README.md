@@ -7,12 +7,22 @@ It is a thin, well-behaved front-end over [**yt-dlp**](https://github.com/yt-dlp
 the open-source project that does the actual work. Nothing leaves your machine except the
 requests yt-dlp makes to YouTube.
 
+![Playlist Grabber](docs/screenshot-dark.png)
+
+<details>
+<summary>Light theme</summary>
+
+![Playlist Grabber in the light theme](docs/screenshot-light.png)
+
+</details>
+
 ```
 ytmusic-downloader/
 ├── index.html      the app — all UI, one self-contained file
 ├── ytmd.py         the local service that drives yt-dlp (stdlib only)
 ├── requirements.txt
 ├── start.sh / start.cmd
+├── docs/           screenshots
 └── tests/          62 offline tests
 ```
 

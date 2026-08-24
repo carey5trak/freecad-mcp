@@ -1275,14 +1275,14 @@ select.field { appearance: none; padding-right: 30px;
     row.innerHTML =
       '<input class="row__check" type="checkbox" tabindex="-1" aria-hidden="true">' +
       '<span class="row__idx"></span>' +
-      '<img class="row__art" alt="" loading="lazy" decoding="async" width="46" height="34" hidden>' +
+      '<img class="row__art" alt="" decoding="async" width="46" height="34" style="visibility:hidden">' +
       '<div class="row__body"><div class="row__title truncate"></div><div class="row__sub truncate"></div></div>' +
       '<span class="row__dur"></span>' +
       '<div class="row__state"></div>' +
       '<div class="row__bar" style="width:0"></div>';
     const artEl = row.children[2];
-    artEl.addEventListener("load", function () { artEl.hidden = false; });
-    artEl.addEventListener("error", function () { artEl.hidden = true; });
+    artEl.addEventListener("load", function () { artEl.style.visibility = "visible"; });
+    artEl.addEventListener("error", function () { artEl.style.visibility = "hidden"; });
     row.addEventListener("click", function (event) {
       const index = Number(row.dataset.index);
       if (isNaN(index)) return;
@@ -1349,14 +1349,20 @@ select.field { appearance: none; padding-right: 30px;
       row.children[1].textContent = track.index || (index + 1);
 
       const art = row.children[2];
-      if (showArt && track.thumbnail) {
-        if (art.getAttribute("src") !== track.thumbnail) {
-          art.hidden = true;               // stays hidden until it actually loads
-          art.setAttribute("src", track.thumbnail);
-        }
-      } else {
+      if (!showArt) {
+        art.style.display = "none";        // reclaim the slot for every row at once
         art.removeAttribute("src");
-        art.hidden = true;
+      } else {
+        art.style.display = "";
+        if (track.thumbnail) {
+          if (art.getAttribute("src") !== track.thumbnail) {
+            art.style.visibility = "hidden";   // keeps the slot, hides it until it loads
+            art.setAttribute("src", track.thumbnail);
+          }
+        } else {
+          art.removeAttribute("src");
+          art.style.visibility = "hidden";
+        }
       }
 
       const body = row.children[3];
@@ -1391,10 +1397,9 @@ select.field { appearance: none; padding-right: 30px;
       }
 
       const bar = row.children[6];
-      const progress = live && (live.state === "downloading" || live.state === "processing") ? (live.progress || 0) : (live && live.state === "done" ? 1 : 0);
-      bar.style.width = (progress * 100) + "%";
-      bar.style.background = live && live.state === "error" ? "var(--err)" : live && live.state === "done" ? "var(--ok)" : "var(--accent)";
-      bar.style.opacity = progress > 0 ? "1" : "0";
+      const active = live && (live.state === "downloading" || live.state === "processing");
+      bar.style.width = active ? ((live.progress || 0) * 100) + "%" : "0%";
+      bar.style.opacity = active ? "1" : "0";
     }
   }
 
