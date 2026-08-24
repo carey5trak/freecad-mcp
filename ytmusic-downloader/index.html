@@ -1510,7 +1510,10 @@ select.field { appearance: none; padding-right: 30px;
     btnRetry.hidden = true;
     const payload = {
       tracks: tracks.map(function (t) {
-        return { id: t.id, title: t.title, uploader: t.uploader, url: t.url, index: t.index, thumbnail: t.thumbnail };
+        // uid must travel with the track: the server only sees the selection,
+        // so it cannot re-derive the same key from a position.
+        return { uid: t.uid, id: t.id, title: t.title, uploader: t.uploader,
+                 url: t.url, index: t.index, thumbnail: t.thumbnail };
       }),
       settings: readSettingsFromUI(),
       playlistTitle: (state.resolved && state.resolved.title) || "",

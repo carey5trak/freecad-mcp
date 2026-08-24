@@ -360,6 +360,16 @@ def escape_template_literal(text: str) -> str:
     return text.replace("%", "%%")
 
 
+_UID_SAFE = re.compile(r"[^A-Za-z0-9:_~.-]")
+
+
+def sanitize_uid(value: Any) -> str:
+    """Accept the page's row key, bounded so it stays usable in a URL path."""
+    if not isinstance(value, str):
+        return ""
+    return _UID_SAFE.sub("", value)[:80]
+
+
 def canonical_watch_url(video_id: str, fallback: str = "") -> str:
     if re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id or ""):
         return f"https://www.youtube.com/watch?v={video_id}"
@@ -722,7 +732,12 @@ class Item:
     )
 
     def __init__(self, track: dict[str, Any], position: int) -> None:
-        self.uid = f"{position}:{track.get('id') or uuid.uuid4().hex[:8]}"
+        # The page keys its rows on a uid derived from the position in the FULL
+        # resolved playlist. This job only receives the SELECTED tracks, so
+        # re-deriving the uid here would disagree with the page for any
+        # selection that is not a prefix, and progress would land nowhere.
+        # Honour the uid the page sent whenever it gives us one.
+        self.uid = sanitize_uid(track.get("uid")) or f"{position}:{track.get('id') or uuid.uuid4().hex[:8]}"
         self.video_id = str(track.get("id") or "")
         self.title = str(track.get("title") or "Untitled")
         self.uploader = str(track.get("uploader") or "")
@@ -765,7 +780,14 @@ class Job:
         self.id = job_id
         self.settings = settings
         self.playlist_title = playlist_title
-        self.items = [Item(t, i) for i, t in enumerate(tracks)]
+        self.items = []
+        taken: set[str] = set()
+        for position, track in enumerate(tracks):
+            item = Item(track, position)
+            while item.uid in taken:  # a duplicate would shadow a row's progress
+                item.uid = f"{item.uid}~{position}"
+            taken.add(item.uid)
+            self.items.append(item)
         self.by_uid = {item.uid: item for item in self.items}
         self.state = "running"
         self.created = time.time()

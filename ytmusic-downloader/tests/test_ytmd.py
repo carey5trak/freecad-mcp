@@ -208,6 +208,38 @@ class TestPathSafety(unittest.TestCase):
         self.assertEqual(ytmd.escape_template_literal("100%(title)s"), "100%%(title)s")
 
 
+class TestRowIdentity(unittest.TestCase):
+    """The page keys rows on a uid built from the FULL playlist; the job only
+    receives the selection, so the uid has to travel with the track."""
+
+    def test_non_prefix_selection_keeps_the_page_uid(self) -> None:
+        full = [{"id": f"vid{i}", "title": f"T{i}", "index": i + 1} for i in range(6)]
+        page_uids = [f"{i}:{t['id']}" for i, t in enumerate(full)]
+        selected = [dict(full[i], uid=page_uids[i]) for i in (0, 3, 5)]
+        job = ytmd.Job("j", selected, ytmd.DEFAULT_SETTINGS, "Mix")
+        self.assertEqual([item.uid for item in job.items], [page_uids[i] for i in (0, 3, 5)])
+
+    def test_missing_uid_falls_back_to_position(self) -> None:
+        job = ytmd.Job("j", [{"id": "abc"}, {"id": "def"}], ytmd.DEFAULT_SETTINGS, "")
+        self.assertEqual([item.uid for item in job.items], ["0:abc", "1:def"])
+
+    def test_duplicate_uids_are_separated(self) -> None:
+        job = ytmd.Job("j", [{"id": "a", "uid": "0:a"}, {"id": "a", "uid": "0:a"}], ytmd.DEFAULT_SETTINGS, "")
+        self.assertEqual(len(job.by_uid), 2)
+        self.assertNotEqual(job.items[0].uid, job.items[1].uid)
+
+    def test_uid_is_sanitised(self) -> None:
+        self.assertNotIn("/", ytmd.sanitize_uid("../../etc/passwd"))
+        self.assertLessEqual(len(ytmd.sanitize_uid("a" * 500)), 80)
+        self.assertEqual(ytmd.sanitize_uid(None), "")
+        self.assertEqual(ytmd.sanitize_uid(12), "")
+
+    def test_a_sanitised_uid_still_routes_to_cancel(self) -> None:
+        """The cancel route matches [^/]{1,80}; the uid must fit through it."""
+        uid = ytmd.sanitize_uid("12:abcDEF_-~.")
+        self.assertRegex(f"/items/{uid}/cancel", r"^/items/([^/]{1,80})/cancel$")
+
+
 class TestErrorCleanup(unittest.TestCase):
     def test_strips_prefix_and_report_url(self) -> None:
         raw = "ERROR: [youtube] abc: Video unavailable; please report this issue on https://github.com/yt-dlp/yt-dlp/issues"
@@ -676,6 +708,36 @@ class TestJobLifecycle(HttpTestCase):
         # ffmpeg may be absent on the test machine, in which case there is no chain.
         if download_opts[-1]["postprocessors"]:
             self.assertIn("opus", codecs)
+
+    def test_progress_reaches_the_rows_the_page_is_showing(self) -> None:
+        """Regression: a non-prefix selection used to strand every row after
+        the first gap, because the server re-derived uids from 0."""
+        install_fake_ydl({"*": {"bytes": 1000}})
+        page_tracks = [
+            {"uid": f"{i}:v{i}", "id": f"v{i}", "title": f"Track {i}", "uploader": "A",
+             "index": i + 1, "url": f"https://www.youtube.com/watch?v=v{i}"}
+            for i in range(6)
+        ]
+        selection = [page_tracks[i] for i in (0, 3, 5)]
+        _, body = self.fixture.request("/api/jobs", "POST", {"tracks": selection})
+        self.fixture.stream_events(body["jobId"])
+        _, snapshot = self.fixture.request("/api/jobs/" + body["jobId"])
+        self.assertEqual([item["uid"] for item in snapshot["items"]], ["0:v0", "3:v3", "5:v5"])
+        self.assertEqual(snapshot["counts"]["done"], 3)
+
+    def test_cancelling_one_item_by_its_page_uid(self) -> None:
+        install_fake_ydl({"*": {"bytes": 5_000_000, "delay": 0.5}})
+        tracks = [
+            {"uid": f"{i}:v{i}", "id": f"v{i}", "title": f"T{i}", "index": i + 1,
+             "url": f"https://www.youtube.com/watch?v=v{i}"}
+            for i in (0, 4)
+        ]
+        _, body = self.fixture.request("/api/jobs", "POST", {"tracks": tracks})
+        status, result = self.fixture.request(f"/api/jobs/{body['jobId']}/items/4:v4/cancel", "POST")
+        self.assertEqual(status, 200)
+        self.assertTrue(result["ok"])
+        self.fixture.request(f"/api/jobs/{body['jobId']}/cancel", "POST")
+        self.fixture.stream_events(body["jobId"], deadline=15)
 
     def test_log_entries_have_increasing_sequence_numbers(self) -> None:
         install_fake_ydl({"*": {"bytes": 1000}})
