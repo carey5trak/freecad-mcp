@@ -254,13 +254,16 @@ class SettingsStore:
         with self._lock:
             self._data = coerce_settings(raw, self._data)
             snapshot = dict(self._data)
-        try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(snapshot, indent=2, sort_keys=True), "utf-8")
-            tmp.replace(self.path)
-        except OSError as exc:
-            log(f"could not save settings to {self.path}: {exc}")
+            # The write stays inside the lock: two requests racing on the same
+            # temp path can otherwise rename a half-written file into place, and
+            # a torn file silently resets every preference on the next load.
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = self.path.with_suffix(".json.tmp")
+                tmp.write_text(json.dumps(snapshot, indent=2, sort_keys=True), "utf-8")
+                tmp.replace(self.path)
+            except OSError as exc:
+                log(f"could not save settings to {self.path}: {exc}")
         return snapshot
 
 
@@ -277,10 +280,20 @@ def log(message: str) -> None:
         sys.stderr.flush()
 
 
+def expand_user_path(raw: str) -> Path:
+    """Path.expanduser() raises RuntimeError - not OSError - for '~nosuchuser',
+    and these paths come from a text field the page saves on every keystroke.
+    One poisoned value would 500 /api/health forever, with no UI left to fix it."""
+    try:
+        return Path(raw).expanduser()
+    except RuntimeError:
+        return Path(raw)
+
+
 def find_ffmpeg(configured: str = "") -> Optional[str]:
     """Resolve an ffmpeg binary, accepting either a file or its directory."""
     if configured:
-        candidate = Path(configured).expanduser()
+        candidate = expand_user_path(configured)
         if candidate.is_dir():
             for name in ("ffmpeg", "ffmpeg.exe"):
                 if (candidate / name).exists():
@@ -349,9 +362,13 @@ def thumbnail_embed_blocked(settings: dict[str, Any]) -> str:
     if not settings.get("embedThumbnail"):
         return ""
     if settings.get("mode") != "audio":
+        if settings.get("videoContainer") == "webm":
+            return "Cover art cannot be embedded into a WebM video container, so it will be skipped."
         return ""
     audio_format = settings.get("audioFormat", "mp3")
-    if audio_format in MUTAGEN_ONLY_FORMATS and not has_mutagen():
+    # "Keep original" remuxes to .opus more often than not, and yt-dlp can only
+    # tag ogg/opus/flac through mutagen.
+    if (audio_format in MUTAGEN_ONLY_FORMATS or audio_format == "best") and not has_mutagen():
         return (
             f"Cover art cannot be embedded into {audio_format} without mutagen. "
             "Install it with: pip install \"yt-dlp[default]\""
@@ -601,7 +618,7 @@ def apply_cookie_opts(opts: dict[str, Any], settings: dict[str, Any]) -> None:
     if source == "file":
         path = (settings.get("cookieFile") or "").strip()
         if path:
-            opts["cookiefile"] = str(Path(path).expanduser())
+            opts["cookiefile"] = str(expand_user_path(path))
     elif source not in {"none", ""}:
         # (browser, profile, keyring, container) - only the browser is needed.
         opts["cookiesfrombrowser"] = (source, None, None, None)
@@ -622,16 +639,18 @@ def build_postprocessors(settings: dict[str, Any], has_ffmpeg: bool) -> list[dic
         chain.append({"key": "SponsorBlock", "categories": ["music_offtopic"], "when": "after_filter"})
 
     if settings.get("mode") == "audio":
-        audio_format = settings.get("audioFormat", "mp3")
-        if audio_format != "best":
-            chain.append(
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": audio_format,
-                    "preferredquality": settings.get("audioQuality", "0"),
-                    "nopostoverwrites": False,
-                }
-            )
+        # Always run the extractor, even for "Keep original": yt-dlp accepts
+        # preferredcodec="best" and losslessly remuxes YouTube's webm/opus into
+        # a real .opus container. Skipping it left ext=webm, which EmbedThumbnail
+        # rejects outright - failing every track in the job.
+        chain.append(
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": settings.get("audioFormat", "mp3"),
+                "preferredquality": settings.get("audioQuality", "0"),
+                "nopostoverwrites": False,
+            }
+        )
 
     if settings.get("writeSubtitles") and settings.get("mode") == "video":
         chain.append({"key": "FFmpegEmbedSubtitle", "already_have_subtitle": False})
@@ -669,7 +688,7 @@ def build_format_selector(settings: dict[str, Any], has_ffmpeg: bool) -> tuple[s
 
 
 def resolve_target_dir(settings: dict[str, Any], playlist_title: str, track: dict[str, Any]) -> Path:
-    base = Path((settings.get("outputDir") or default_output_dir())).expanduser()
+    base = expand_user_path(settings.get("outputDir") or default_output_dir())
     ascii_only = bool(settings.get("asciiFilenames"))
     mode = settings.get("folderMode", "playlist")
     if mode == "flat":
@@ -716,10 +735,13 @@ def build_ydl_opts(
         "consoletitle": False,
         "color": "no_color",
         "format": fmt,
-        "outtmpl": {"default": str(target_dir / f"{prefix}{filename_template}")},
-        "paths": {"temp": str(target_dir / ".ytmd-part")},
+        # The template must stay relative: yt-dlp applies trim_file_name to the
+        # rendered string before any path join, so an absolute outtmpl spends the
+        # budget on directory names and truncates - or collides - the real ones.
+        # An absolute outtmpl also silently disables "paths".
+        "outtmpl": {"default": f"{prefix}{filename_template}"},
+        "paths": {"home": str(target_dir), "temp": str(target_dir / ".ytmd-part")},
         "restrictfilenames": ascii_only,
-        "windowsfilenames": sys.platform == "win32",
         "overwrites": False,
         "continuedl": True,
         "retries": int(settings.get("retries", 5)),
@@ -734,8 +756,19 @@ def build_ydl_opts(
         "trim_file_name": 200,
     }
 
+    if sys.platform == "win32":
+        # Passing False explicitly is tri-state for "sanitise almost nothing",
+        # the opposite of the intent, so omit the key off Windows entirely.
+        opts["windowsfilenames"] = True
     if merge_container:
         opts["merge_output_format"] = merge_container
+        opts["final_ext"] = merge_container
+    elif settings.get("mode") == "audio" and has_ffmpeg:
+        # Without final_ext the "already downloaded" check only tests the
+        # pre-conversion name, so an existing .mp3 is silently re-fetched.
+        audio_format = settings.get("audioFormat", "mp3")
+        if audio_format != "best":
+            opts["final_ext"] = "ogg" if audio_format == "vorbis" else audio_format
     if ffmpeg_dir:
         opts["ffmpeg_location"] = ffmpeg_dir
     if settings.get("writeSubtitles") and settings.get("mode") == "video":
@@ -895,7 +928,7 @@ class Job:
             "counts": self.counts(),
             "items": [item.to_dict() for item in self.items],
             "log": log_copy,
-            "outputDir": str(Path(self.settings.get("outputDir") or default_output_dir()).expanduser()),
+            "outputDir": str(expand_user_path(self.settings.get("outputDir") or default_output_dir())),
             "writtenFiles": list(self.written_files),
         }
 
@@ -947,6 +980,18 @@ class JobManager:
                 self._set_state(job, item, "cancelled", message="Cancelled before it started")
         job.add_log("info", "Cancelling remaining downloads...")
         return True
+
+    def cancel_all_running(self) -> int:
+        """Stop every live job. Pool workers are non-daemon and are joined at
+        interpreter exit, so without this the process keeps downloading long
+        after the server has gone."""
+        stopped = 0
+        with self.lock:
+            live = [job for job in self.jobs.values() if job.state == "running"]
+        for job in live:
+            self.cancel(job.id)
+            stopped += 1
+        return stopped
 
     def cancel_item(self, job_id: str, uid: str) -> bool:
         job = self.get(job_id)
@@ -1003,7 +1048,7 @@ class JobManager:
         ffmpeg_dir = find_ffmpeg(settings.get("ffmpegLocation", ""))
         has_ffmpeg = ffmpeg_dir is not None
 
-        out_dir = Path(settings.get("outputDir") or default_output_dir()).expanduser()
+        out_dir = expand_user_path(settings.get("outputDir") or default_output_dir())
         try:
             out_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -1345,6 +1390,7 @@ class Handler(BaseHTTPRequestHandler):
     def _dispatch(self, method: str) -> None:
         try:
             if not self._host_ok():
+                self.close_connection = True
                 self._json(403, {"error": "Requests must be addressed to localhost."})
                 return
             path = urlparse(self.path).path
@@ -1357,12 +1403,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._route_static(path)
         except ApiError as exc:
+            self.close_connection = True  # the request body may be unread
             self._json(exc.status, {"error": exc.message})
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception:  # noqa: BLE001 - never let one request kill the thread
             log(traceback.format_exc())
             try:
+                self.close_connection = True
                 self._json(500, {"error": "Internal error. See the terminal running ytmd for details."})
             except Exception:
                 pass
@@ -1502,6 +1550,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/quit" and method == "POST":
             self._json(200, {"ok": True})
             log("shutdown requested from the app")
+            stopped = state.jobs.cancel_all_running()
+            if stopped:
+                log(f"stopping {stopped} running job(s) first")
             if state.server is not None:
                 threading.Thread(target=state.server.shutdown, daemon=True).start()
             return
@@ -1562,7 +1613,7 @@ def inspect_path(raw: str) -> dict[str, Any]:
     """Report whether an output folder is usable, without creating anything."""
     if not raw.strip():
         raw = default_output_dir()
-    path = Path(raw).expanduser()
+    path = expand_user_path(raw)
     result: dict[str, Any] = {"path": str(path), "exists": path.exists(), "writable": False, "free": None, "error": ""}
     probe = path
     while not probe.exists() and probe.parent != probe:
@@ -1579,7 +1630,7 @@ def inspect_path(raw: str) -> dict[str, Any]:
 
 
 def reveal_in_file_manager(raw: str) -> dict[str, Any]:
-    path = Path(raw or default_output_dir()).expanduser()
+    path = expand_user_path(raw or default_output_dir())
     if not path.exists():
         return {"ok": False, "error": f"{path} does not exist yet."}
     target = str(path if path.is_dir() else path.parent)
@@ -1681,6 +1732,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     finally:
         server.shutdown()
         server.server_close()
+        if state.jobs.cancel_all_running():
+            print("  Waiting for in-flight downloads to stop...")
+            deadline = time.time() + 10
+            while time.time() < deadline and any(
+                job.state == "running" for job in list(state.jobs.jobs.values())
+            ):
+                time.sleep(0.2)
     return 0
 
 

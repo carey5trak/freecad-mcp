@@ -21,7 +21,7 @@
   --border-strong: rgba(12, 16, 28, 0.20);
   --text: #14171f;
   --muted: #5b6270;
-  --faint: #868d9b;
+  --faint: #646b7a;   /* 4.77:1 on --panel-2; carries per-track error text */
   --accent: #e02020;
   --accent-soft: rgba(224, 32, 32, 0.10);
   --accent-fg: #ffffff;
@@ -64,7 +64,7 @@
   --border-strong: rgba(255, 255, 255, 0.18);
   --text: #e9ebf0;
   --muted: #99a0ae;
-  --faint: #6d7482;
+  --faint: #8b93a2;   /* 5.44:1 on --panel-2 */
   --accent: #ff4444;
   --accent-soft: rgba(255, 68, 68, 0.14);
   --accent-fg: #ffffff;
@@ -92,7 +92,7 @@
     --border-strong: rgba(12, 16, 28, 0.20);
     --text: #14171f;
     --muted: #5b6270;
-    --faint: #868d9b;
+    --faint: #646b7a;   /* 4.77:1 on --panel-2; carries per-track error text */
     --accent: #e02020;
     --accent-soft: rgba(224, 32, 32, 0.10);
     --ok: #12915b;
@@ -554,10 +554,10 @@ select.field { appearance: none; padding-right: 30px;
             <option value="duration">Longest first</option>
           </select>
           <span class="topbar__spacer"></span>
-          <span class="pill pill--accent" id="sel-count">0 selected</span>
+          <span class="pill pill--accent" id="sel-count" aria-live="polite">0 selected</span>
         </div>
         <div class="tracklist" id="tracklist" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="Tracks">
-          <div class="tracklist__sizer" id="sizer"></div>
+          <div class="tracklist__sizer" id="sizer" role="presentation"></div>
         </div>
         <div class="logbar">
           <button class="btn btn--sm btn--ghost" id="btn-log-toggle" aria-expanded="false" aria-controls="log">Show log</button>
@@ -580,7 +580,8 @@ select.field { appearance: none; padding-right: 30px;
         <button class="btn btn--primary" id="btn-start"><svg><use href="#i-download"/></svg><span id="btn-start-label">Download</span></button>
         <button class="btn btn--danger" id="btn-cancel" hidden><svg><use href="#i-stop"/></svg>Stop</button>
         <div class="actionbar__progress">
-          <div class="progress" id="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="progress" id="progress" role="progressbar" aria-label="Download progress"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
             <div class="progress__fill" id="progress-fill"></div>
           </div>
           <div class="actionbar__stats" id="stats"><span>Ready</span></div>
@@ -1118,6 +1119,12 @@ select.field { appearance: none; padding-right: 30px;
 
   form.addEventListener("submit", function (event) {
     event.preventDefault();
+    // clearJob() nulls state.jobId, after which Stop can no longer reach the
+    // running job - it would keep writing files with nothing left to cancel it.
+    if (state.jobRunning && !window.confirm(
+        "A download is still running. Loading a new link will leave it running with no way to stop it. Continue?")) {
+      return;
+    }
     resolve();
   });
 
@@ -1302,6 +1309,7 @@ select.field { appearance: none; padding-right: 30px;
     const row = document.createElement("div");
     row.className = "row";
     row.setAttribute("role", "option");
+    row.id = "ytmd-opt" + pool.length;   // referenced by aria-activedescendant
     row.innerHTML =
       '<input class="row__check" type="checkbox" tabindex="-1" aria-hidden="true">' +
       '<span class="row__idx"></span>' +
@@ -1355,6 +1363,7 @@ select.field { appearance: none; padding-right: 30px;
     while (pool.length < needed) pool.push(makeRow());
 
     const showArt = !!(state.settings && state.settings.showThumbnails);
+    let cursorRowId = "";
 
     for (let i = 0; i < pool.length; i++) {
       const row = pool[i];
@@ -1371,6 +1380,9 @@ select.field { appearance: none; padding-right: 30px;
       row.classList.toggle("row--unavailable", !track.available);
       row.setAttribute("aria-selected", selected ? "true" : "false");
       row.classList.toggle("row--cursor", index === state.cursor);
+      row.setAttribute("aria-posinset", String(index + 1));
+      row.setAttribute("aria-setsize", String(view.length));
+      if (index === state.cursor) cursorRowId = row.id;
 
       const check = row.children[0];
       check.checked = selected;
@@ -1431,6 +1443,10 @@ select.field { appearance: none; padding-right: 30px;
       bar.style.width = active ? ((live.progress || 0) * 100) + "%" : "0%";
       bar.style.opacity = active ? "1" : "0";
     }
+
+    // Must be cleared when the cursor row is scrolled out of the window,
+    // otherwise the reference dangles at a recycled row.
+    listEl.setAttribute("aria-activedescendant", cursorRowId);
   }
 
   /* keyboard navigation over the virtual list */
@@ -1775,9 +1791,23 @@ select.field { appearance: none; padding-right: 30px;
    * ------------------------------------------------------------------ */
 
   const sheet = $("#col-side");
-  $("#btn-options").addEventListener("click", function () { sheet.dataset.open = "true"; });
-  $("#btn-options-close").addEventListener("click", function () { sheet.dataset.open = "false"; });
-  sheet.addEventListener("click", function (event) { if (event.target === sheet) sheet.dataset.open = "false"; });
+  const btnOptions = $("#btn-options");
+  btnOptions.setAttribute("aria-expanded", "false");
+
+  function openSheet() {
+    sheet.dataset.open = "true";
+    btnOptions.setAttribute("aria-expanded", "true");
+    $("#btn-options-close").focus();
+  }
+  function closeSheet() {
+    if (sheet.dataset.open !== "true") return;
+    sheet.dataset.open = "false";
+    btnOptions.setAttribute("aria-expanded", "false");
+    btnOptions.focus();   // never strand focus behind the scrim
+  }
+  btnOptions.addEventListener("click", openSheet);
+  $("#btn-options-close").addEventListener("click", closeSheet);
+  sheet.addEventListener("click", function (event) { if (event.target === sheet) closeSheet(); });
 
   $("#btn-notice-ok").addEventListener("click", function () {
     $("#notice").hidden = true;
@@ -1800,7 +1830,7 @@ select.field { appearance: none; padding-right: 30px;
   document.addEventListener("keydown", function (event) {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
     if (event.key === "Escape") {
-      if (sheet.dataset.open === "true") { sheet.dataset.open = "false"; return; }
+      if (sheet.dataset.open === "true") { closeSheet(); return; }
       if (document.activeElement === filterBox) { filterBox.value = ""; rebuildView(); filterBox.blur(); }
       return;
     }

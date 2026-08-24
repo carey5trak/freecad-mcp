@@ -240,6 +240,34 @@ class TestRowIdentity(unittest.TestCase):
         self.assertRegex(f"/items/{uid}/cancel", r"^/items/([^/]{1,80})/cancel$")
 
 
+class TestHostilePaths(unittest.TestCase):
+    """Path.expanduser() raises RuntimeError, not OSError, for an unknown user -
+    and these strings are saved on every keystroke in the options panel."""
+
+    HOSTILE = "~nosuchuser12345/Music"
+
+    def test_expand_user_path_never_raises(self) -> None:
+        for probe in (self.HOSTILE, "~~weird", "~/Music", "/tmp/plain", ""):
+            with self.subTest(probe=probe):
+                self.assertIsInstance(ytmd.expand_user_path(probe), Path)
+
+    def test_ffmpeg_lookup_survives(self) -> None:
+        ytmd.find_ffmpeg(self.HOSTILE)  # must not raise
+
+    def test_path_check_survives_and_reports_unusable(self) -> None:
+        info = ytmd.inspect_path(self.HOSTILE)
+        self.assertFalse(info["exists"])
+
+    def test_target_dir_survives(self) -> None:
+        settings = dict(ytmd.DEFAULT_SETTINGS, outputDir=self.HOSTILE)
+        self.assertIsInstance(ytmd.resolve_target_dir(settings, "Mix", {"uploader": ""}), Path)
+
+    def test_job_snapshot_survives(self) -> None:
+        settings = dict(ytmd.DEFAULT_SETTINGS, outputDir=self.HOSTILE)
+        job = ytmd.Job("j", [{"id": "a", "title": "T"}], settings, "Mix")
+        self.assertIn("outputDir", job.snapshot())
+
+
 class TestErrorCleanup(unittest.TestCase):
     def test_strips_prefix_and_report_url(self) -> None:
         raw = "ERROR: [youtube] abc: Video unavailable; please report this issue on https://github.com/yt-dlp/yt-dlp/issues"
@@ -271,7 +299,7 @@ class TestRealYtdlpAcceptsOurOptions(unittest.TestCase):
     """Constructing a real YoutubeDL validates every postprocessor key/kwarg."""
 
     def _build(self, **overrides: Any) -> dict[str, Any]:
-        settings = dict(ytmd.DEFAULT_SETTINGS, outputDir="/tmp/ytmd-test", **overrides)
+        settings = {**ytmd.DEFAULT_SETTINGS, "outputDir": "/tmp/ytmd-test", **overrides}
         hooks = {"progress": lambda d: None, "postprocessor": lambda d: None,
                  "logger": ytmd._CollectingLogger(lambda level, msg: None)}
         return ytmd.build_ydl_opts(
@@ -372,8 +400,88 @@ class TestRealYtdlpAcceptsOurOptions(unittest.TestCase):
 
     def test_numbering_prefix_and_template(self) -> None:
         opts = self._build(numberTracks=True, fileTemplate="%(title)s")
-        out = opts["outtmpl"]["default"]
-        self.assertIn("01 - %(title)s.%(ext)s", out)
+        self.assertEqual(opts["outtmpl"]["default"], "01 - %(title)s.%(ext)s")
+
+    def test_output_template_stays_relative(self) -> None:
+        """yt-dlp applies trim_file_name to the rendered template BEFORE any
+        path join. An absolute template spends the 200-char budget on directory
+        names, truncating - or colliding - the actual filenames, and it also
+        silently disables the "paths" option."""
+        opts = self._build()
+        template = opts["outtmpl"]["default"]
+        self.assertFalse(Path(template).is_absolute(), template)
+        self.assertNotIn("/tmp/ytmd-test", template)
+        self.assertEqual(opts["paths"]["home"], str(Path("/tmp/ytmd-test/Mix")))
+        self.assertTrue(opts["paths"]["temp"].endswith(".ytmd-part"))
+
+    def test_trim_budget_is_spent_on_the_filename(self) -> None:
+        deep = "/tmp/" + "/".join(["a-fairly-long-directory-name"] * 6)
+        opts = self._build(outputDir=deep, fileTemplate="%(title)s.%(ext)s")
+        self.assertLess(len(opts["outtmpl"]["default"]), opts["trim_file_name"])
+
+    def test_real_ytdlp_resolves_our_template_to_the_intended_path(self) -> None:
+        """Ask the real yt-dlp where a file would land, rather than assuming."""
+        opts = self._build(outputDir="/tmp/ytmd-test", folderMode="playlist",
+                           numberTracks=True, fileTemplate="%(title)s.%(ext)s")
+        with REAL_YDL({**opts, "quiet": True, "ffmpeg_location": None}) as ydl:
+            resolved = ydl.prepare_filename({"title": "Some Track", "ext": "mp3", "id": "abc"})
+        self.assertEqual(resolved, str(Path("/tmp/ytmd-test/Mix/01 - Some Track.mp3")))
+
+    def test_long_titles_in_a_deep_folder_do_not_collide(self) -> None:
+        """The regression: trim_file_name used to eat the whole absolute path,
+        so distinct tracks resolved to one identical filename."""
+        deep = "/tmp/" + "/".join(["a-fairly-long-directory-name-like-a-playlist"] * 3)
+        opts = self._build(outputDir=deep, folderMode="playlist", numberTracks=False,
+                           fileTemplate="%(title)s.%(ext)s")
+        titles = [
+            "A Reasonably Long Track Title That Real Albums Genuinely Have On Them, Part One",
+            "A Reasonably Long Track Title That Real Albums Genuinely Have On Them, Part Two",
+            "A Reasonably Long Track Title That Real Albums Genuinely Have On Them, Part Three",
+        ]
+        with REAL_YDL({**opts, "quiet": True, "ffmpeg_location": None}) as ydl:
+            resolved = [ydl.prepare_filename({"title": t, "ext": "mp3", "id": str(i)})
+                        for i, t in enumerate(titles)]
+        self.assertEqual(len(set(resolved)), len(titles), f"paths collided: {resolved}")
+        for path in resolved:
+            self.assertTrue(path.endswith(".mp3"), path)
+            self.assertIn("a-fairly-long-directory-name-like-a-playlist", path)
+
+    def test_keep_original_still_runs_the_extractor(self) -> None:
+        """Without it the file stays .webm, which EmbedThumbnail rejects,
+        failing every track in the job."""
+        keys = [pp["key"] for pp in ytmd.build_postprocessors(
+            dict(ytmd.DEFAULT_SETTINGS, audioFormat="best"), has_ffmpeg=True)]
+        self.assertIn("FFmpegExtractAudio", keys)
+
+    def test_keep_original_needs_mutagen_for_cover_art(self) -> None:
+        real = ytmd.has_mutagen
+        ytmd.has_mutagen = lambda: False  # type: ignore[assignment]
+        self.addCleanup(lambda: setattr(ytmd, "has_mutagen", real))
+        settings = dict(ytmd.DEFAULT_SETTINGS, audioFormat="best", embedThumbnail=True)
+        self.assertIn("mutagen", ytmd.thumbnail_embed_blocked(settings))
+        self.assertNotIn("EmbedThumbnail", [pp["key"] for pp in ytmd.build_postprocessors(settings, True)])
+
+    def test_webm_video_container_cannot_take_cover_art(self) -> None:
+        settings = dict(ytmd.DEFAULT_SETTINGS, mode="video", videoContainer="webm", embedThumbnail=True)
+        self.assertIn("WebM", ytmd.thumbnail_embed_blocked(settings))
+        self.assertNotIn("EmbedThumbnail", [pp["key"] for pp in ytmd.build_postprocessors(settings, True)])
+        for container in ("mp4", "mkv"):
+            other = dict(settings, videoContainer=container)
+            self.assertEqual(ytmd.thumbnail_embed_blocked(other), "")
+
+    def test_final_ext_lets_ytdlp_see_the_converted_file(self) -> None:
+        self.assertEqual(self._build(audioFormat="mp3")["final_ext"], "mp3")
+        self.assertEqual(self._build(audioFormat="vorbis")["final_ext"], "ogg")
+        self.assertEqual(self._build(mode="video", videoContainer="mkv")["final_ext"], "mkv")
+        self.assertNotIn("final_ext", self._build(audioFormat="best"))
+
+    def test_windowsfilenames_is_omitted_off_windows(self) -> None:
+        """An explicit False is tri-state for "sanitise almost nothing"."""
+        opts = self._build()
+        if sys.platform == "win32":
+            self.assertIs(opts["windowsfilenames"], True)
+        else:
+            self.assertNotIn("windowsfilenames", opts)
 
     def test_cookies_from_browser_shape(self) -> None:
         opts = self._build(cookiesFrom="firefox")
@@ -755,8 +863,11 @@ class TestJobLifecycle(HttpTestCase):
         download_opts = [o for o in FakeYDL.seen_opts if "outtmpl" in o]
         self.assertTrue(download_opts)
         template = download_opts[-1]["outtmpl"]["default"]
-        self.assertIn("My Mix", template)
+        # The directory belongs in paths.home, not the template - see
+        # TestOutputTemplateStaysRelative for why.
+        self.assertIn("My Mix", download_opts[-1]["paths"]["home"])
         self.assertIn("01 - ", template)
+        self.assertNotIn("My Mix", template)
         codecs = [pp.get("preferredcodec") for pp in download_opts[-1]["postprocessors"]]
         # ffmpeg may be absent on the test machine, in which case there is no chain.
         if download_opts[-1]["postprocessors"]:
