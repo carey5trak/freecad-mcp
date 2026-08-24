@@ -274,7 +274,7 @@ def _run_metadata_command(args: argparse.Namespace) -> int:
 def _run_serve(args: argparse.Namespace) -> int:
     import webbrowser
 
-    from .webapp import create_server
+    from .webapp import LOOPBACK, create_server, serve_urls
 
     options = DownloadOptions(
         output_dir=args.output_dir,
@@ -286,13 +286,14 @@ def _run_serve(args: argparse.Namespace) -> int:
     server, token = create_server(
         options, host=args.host, port=args.port, allow_other_sites=args.any_site
     )
-    host, port = server.server_address[0], server.server_address[1]
-    shown_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
-    url = f"http://{shown_host}:{port}/?t={token}"
+    urls = serve_urls(args.host, server.server_address[1], token)
+    width = max(len(label) for label, _ in urls)
 
-    print(f"YouTube downloader UI: {url}")
+    print("YouTube downloader UI")
+    for label, url in urls:
+        print(f"  {label:<{width}}  {url}")
     print(f"Saving into: {Path(args.output_dir).resolve()}")
-    if args.host not in {"127.0.0.1", "localhost", "::1"}:
+    if args.host not in LOOPBACK:
         print(
             "warning: this helper downloads whatever it is asked to. Binding it to a "
             "non-loopback address exposes it to your network.",
@@ -302,7 +303,7 @@ def _run_serve(args: argparse.Namespace) -> int:
     print("Press Ctrl+C to stop.")
 
     if not args.no_browser:
-        webbrowser.open(url)
+        webbrowser.open(urls[0][1])
     try:
         server.serve_forever()
     except KeyboardInterrupt:

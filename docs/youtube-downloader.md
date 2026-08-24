@@ -119,6 +119,41 @@ convenient.
 | `--any-site` | Accept non-YouTube URLs by default. |
 | `--cookies`, `--cookies-from-browser` | Authenticate for restricted videos. |
 
+### From your phone
+
+The helper does the downloading, so the phone only needs a browser. Start it
+bound to your network instead of loopback:
+
+```bash
+uv run youtube-downloader serve --host 0.0.0.0
+```
+
+It then prints an address for each device:
+
+```
+YouTube downloader UI
+  On this machine    http://127.0.0.1:8765/?t=w6BUfLdq_6dkO5L4PNmWGk0cAVnrqsbG
+  On another device  http://192.168.1.5:8765/?t=w6BUfLdq_6dkO5L4PNmWGk0cAVnrqsbG
+```
+
+Open the "On another device" URL on a phone connected to the same Wi-Fi. The
+token is already in the link, so there is nothing to type by hand.
+
+Files are written on the computer running the helper. Each finished download
+also gets a save link, which pulls a copy onto the phone through the browser.
+
+The page is built for a narrow screen: it stays within the viewport down to
+320px, and its controls are sized for touch.
+
+Two things commonly get in the way:
+
+- **A firewall.** macOS asks whether to allow incoming connections the first
+  time; Windows Defender blocks them until you allow Python on private
+  networks.
+- **Client isolation.** Some routers, and most guest networks, stop devices on
+  the same Wi-Fi from reaching each other. If the page will not load, this is
+  usually why.
+
 ### Opening the HTML file directly
 
 `src/youtube_downloader/static/index.html` is a self-contained page — no build

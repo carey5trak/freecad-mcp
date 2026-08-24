@@ -17,13 +17,14 @@ import json
 import logging
 import mimetypes
 import secrets
+import socket
 import threading
 import uuid
 from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 from urllib.parse import parse_qs, urlparse
 
 from .downloader import Progress, YouTubeDownloader
@@ -402,6 +403,64 @@ class _Handler(BaseHTTPRequestHandler):
             content_type,
             {"Content-Disposition": f'attachment; filename="{path.name}"'},
         )
+
+
+LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+WILDCARD = frozenset({"0.0.0.0", "::"})
+
+
+def lan_addresses() -> list[str]:
+    """Best-effort list of non-loopback addresses this machine answers on.
+
+    Used only to print a URL a phone on the same network can actually reach,
+    so a partial or empty answer is fine.
+    """
+    found: list[str] = []
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            # Asks the OS which local address would be used to reach the
+            # outside world. UDP connect sends no packets.
+            probe.connect(("8.8.8.8", 53))
+            found.append(probe.getsockname()[0])
+    except OSError:
+        pass
+    try:
+        _, _, addresses = socket.gethostbyname_ex(socket.gethostname())
+        found.extend(addresses)
+    except OSError:
+        pass
+
+    unique: list[str] = []
+    for address in found:
+        if address not in unique and not address.startswith("127."):
+            unique.append(address)
+    return unique
+
+
+def serve_urls(
+    host: str, port: int, token: str, addresses: Sequence[str] | None = None
+) -> list[tuple[str, str]]:
+    """The (label, url) pairs worth printing when the server starts.
+
+    Binding to a wildcard or an explicit network address means the point is to
+    reach it from another device, so the reachable address is what the user
+    needs — printing only the loopback URL would be useless to them.
+    """
+    def url_for(address: str) -> str:
+        shown = f"[{address}]" if ":" in address else address
+        return f"http://{shown}:{port}/?t={token}"
+
+    if host in LOOPBACK:
+        return [("On this machine", url_for("127.0.0.1"))]
+
+    pairs = [("On this machine", url_for("127.0.0.1"))]
+    reachable = list(addresses) if addresses is not None else lan_addresses()
+    if host not in WILDCARD:
+        # An explicit bind address is authoritative; do not guess past it.
+        reachable = [host]
+    for address in reachable:
+        pairs.append(("On another device", url_for(address)))
+    return pairs
 
 
 def create_server(

@@ -332,3 +332,58 @@ def test_unknown_file_index_is_a_404(server) -> None:
 def test_unknown_endpoints_are_404(server) -> None:
     assert request(server.base, "/api/nope")[0] == 404
     assert request(server.base, "/api/nope", method="POST", body={"url": "x"})[0] == 404
+
+
+# -- the URLs printed at startup ---------------------------------------
+
+
+def test_serve_urls_on_loopback_offers_only_the_local_address() -> None:
+    from youtube_downloader.webapp import serve_urls
+
+    urls = serve_urls("127.0.0.1", 8765, "tok")
+    assert urls == [("On this machine", "http://127.0.0.1:8765/?t=tok")]
+
+
+def test_serve_urls_on_a_wildcard_bind_offers_reachable_addresses() -> None:
+    # Binding to 0.0.0.0 means the point is to reach it from another device,
+    # so a loopback URL alone would be useless.
+    from youtube_downloader.webapp import serve_urls
+
+    urls = serve_urls("0.0.0.0", 8765, "tok", addresses=["192.168.1.5", "10.0.0.9"])
+    assert urls == [
+        ("On this machine", "http://127.0.0.1:8765/?t=tok"),
+        ("On another device", "http://192.168.1.5:8765/?t=tok"),
+        ("On another device", "http://10.0.0.9:8765/?t=tok"),
+    ]
+
+
+def test_serve_urls_trusts_an_explicit_bind_address() -> None:
+    from youtube_downloader.webapp import serve_urls
+
+    urls = serve_urls("192.168.1.5", 8765, "tok", addresses=["10.0.0.9"])
+    assert urls[-1] == ("On another device", "http://192.168.1.5:8765/?t=tok")
+    assert all("10.0.0.9" not in url for _, url in urls)
+
+
+def test_serve_urls_brackets_ipv6() -> None:
+    from youtube_downloader.webapp import serve_urls
+
+    urls = serve_urls("::", 8765, "tok", addresses=["fe80::1"])
+    assert urls[-1] == ("On another device", "http://[fe80::1]:8765/?t=tok")
+
+
+def test_serve_urls_survives_having_no_reachable_address() -> None:
+    from youtube_downloader.webapp import serve_urls
+
+    assert serve_urls("0.0.0.0", 8765, "tok", addresses=[]) == [
+        ("On this machine", "http://127.0.0.1:8765/?t=tok")
+    ]
+
+
+def test_lan_addresses_never_returns_loopback() -> None:
+    from youtube_downloader.webapp import lan_addresses
+
+    addresses = lan_addresses()
+    assert isinstance(addresses, list)
+    assert all(not a.startswith("127.") for a in addresses)
+    assert len(set(addresses)) == len(addresses)
