@@ -84,6 +84,64 @@ datacenter IPs. Pass browser cookies to get past it:
 uv run youtube-downloader download "https://youtu.be/VIDEO_ID" --cookies-from-browser firefox
 ```
 
+## Browser UI
+
+A browser cannot fetch YouTube's streams by itself — YouTube sends no
+cross-origin headers, so page JavaScript is not permitted to read them. The UI
+therefore comes with a small helper that runs on your own machine and does the
+downloading; the page just drives it.
+
+```bash
+uv run youtube-downloader serve
+```
+
+That starts the helper, prints an address, and opens your browser:
+
+```
+YouTube downloader UI: http://127.0.0.1:8765/?t=Lmicv0EJePNHqCWUHYWm7q-W
+Saving into: /home/you/downloads
+Access token: Lmicv0EJePNHqCWUHYWm7q-W
+Press Ctrl+C to stop.
+```
+
+The page offers the same choices as the CLI — video or audio, quality,
+container, subtitles, whole playlists — shows live progress, and gives a save
+link for each finished file. Files are written to the helper's output directory
+regardless; the link is there for when your browser's download folder is more
+convenient.
+
+| Flag | Effect |
+| --- | --- |
+| `-o, --output-dir` | Where files are written (default `./downloads`). |
+| `--port` | Port to listen on (default `8765`). |
+| `--host` | Address to bind (default `127.0.0.1`). |
+| `--no-browser` | Do not open a browser window. |
+| `--any-site` | Accept non-YouTube URLs by default. |
+| `--cookies`, `--cookies-from-browser` | Authenticate for restricted videos. |
+
+### Opening the HTML file directly
+
+`src/youtube_downloader/static/index.html` is a self-contained page — no build
+step, no external requests. Opening it straight from disk works too: it will
+say it cannot find the helper and ask for the address and access token that
+`serve` prints. Letting `serve` host the page is simpler, since it fills both
+in for you.
+
+### Security
+
+The helper downloads whatever it is asked to, so it is built to be reachable
+only by you:
+
+- It binds to `127.0.0.1`, so nothing outside your machine can see it.
+- Every API call must carry the access token minted at startup. A random web
+  page you happen to have open cannot read that token, so it cannot drive the
+  helper.
+- Saved files are served only from the configured output directory, and only
+  ones the helper itself recorded.
+
+Binding it to a non-loopback address with `--host` exposes it to your network,
+and it prints a warning when you do.
+
 ## Python API
 
 ```python

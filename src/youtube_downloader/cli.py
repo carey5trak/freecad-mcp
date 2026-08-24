@@ -231,6 +231,27 @@ def build_parser() -> argparse.ArgumentParser:
     formats = sub.add_parser("formats", help="list the streams available for a URL")
     _add_urls(formats)
 
+    serve = sub.add_parser("serve", help="open the browser UI, backed by a local helper")
+    serve.add_argument(
+        "-o", "--output-dir", type=Path, default=Path("downloads"),
+        help="directory to write files into (default: ./downloads)",
+    )
+    serve.add_argument(
+        "-t", "--template", default=DEFAULT_TEMPLATE,
+        help=f"yt-dlp output template (default: {DEFAULT_TEMPLATE!r})".replace("%", "%%"),
+    )
+    serve.add_argument("--port", type=int, default=8765, help="port to listen on (default: 8765)")
+    serve.add_argument(
+        "--host", default="127.0.0.1",
+        help="address to bind (default: 127.0.0.1, reachable only from this machine)",
+    )
+    serve.add_argument("--no-browser", action="store_true", help="do not open a browser window")
+    serve.add_argument(
+        "--any-site", action="store_true", help="allow non-YouTube URLs that yt-dlp supports"
+    )
+    serve.add_argument("--cookies", type=Path, help="cookies.txt file for restricted videos")
+    serve.add_argument("--cookies-from-browser", help="load cookies from a browser, e.g. firefox")
+
     return parser
 
 
@@ -250,9 +271,53 @@ def _run_metadata_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_serve(args: argparse.Namespace) -> int:
+    import webbrowser
+
+    from .webapp import create_server
+
+    options = DownloadOptions(
+        output_dir=args.output_dir,
+        filename_template=args.template,
+        cookies_file=args.cookies,
+        cookies_from_browser=args.cookies_from_browser,
+    )
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    server, token = create_server(
+        options, host=args.host, port=args.port, allow_other_sites=args.any_site
+    )
+    host, port = server.server_address[0], server.server_address[1]
+    shown_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    url = f"http://{shown_host}:{port}/?t={token}"
+
+    print(f"YouTube downloader UI: {url}")
+    print(f"Saving into: {Path(args.output_dir).resolve()}")
+    if args.host not in {"127.0.0.1", "localhost", "::1"}:
+        print(
+            "warning: this helper downloads whatever it is asked to. Binding it to a "
+            "non-loopback address exposes it to your network.",
+            file=sys.stderr,
+        )
+    print("Access token:", token)
+    print("Press Ctrl+C to stop.")
+
+    if not args.no_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nstopping", file=sys.stderr)
+    finally:
+        server.shutdown()
+        server.server_close()
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "serve":
+            return _run_serve(args)
         if args.command in {"info", "formats"}:
             return _run_metadata_command(args)
 

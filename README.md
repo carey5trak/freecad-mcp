@@ -262,6 +262,7 @@ independent of the FreeCAD MCP server. See
 [`docs/youtube-downloader.md`](docs/youtube-downloader.md).
 
 ```bash
+uv run youtube-downloader serve                                                  # browser UI
 uv run youtube-downloader download "https://youtu.be/VIDEO_ID" --quality 1080p
 uv run youtube-downloader audio "https://youtu.be/VIDEO_ID" --audio-format mp3
 ```
